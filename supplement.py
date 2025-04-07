@@ -10,14 +10,21 @@ from skimage import measure, segmentation
 from skimage.segmentation import find_boundaries
 from skimage.morphology import dilation, disk
 
-
 warnings.filterwarnings("ignore")
+
+def delete_dot_underscore_files(directory):
+    for root, dirs, files in os.walk(directory):
+        for file in files:
+            if file.startswith("._"):
+                os.remove(os.path.join(root, file))
+                print(f"Deleted: {os.path.join(root, file)}")
 
 def open_folder(image_folder, ids_list):
     """
     Putting pairs of TIFF images needed for segmentation in the dictionary
     """
     image_dict = {}
+    delete_dot_underscore_files(image_folder)
     if not os.path.isdir(image_folder):
         return image_dict
     # Iterate through all files in the directory
@@ -92,6 +99,7 @@ def image_preprocessing(main_marker_image_path, # image of the channel that will
     diam_pixels = diam / pixel_conv_rate # Converting microns specified by the user in pixels
 
     return main_marker_image, nucleus_image, diam_pixels, marker_channel, rgb_image
+
 
 def analyze_segmented_cells(predicted_masks,
                          main_marker_image,

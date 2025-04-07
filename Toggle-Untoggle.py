@@ -535,7 +535,8 @@ class ImageProcessingApp(QMainWindow):
                         roi = roifile.ImagejRoi.frompoints(contour)
                         roi_list.append(roi)
                 # Save all ROIs for this image in a single ZIP file
-                roi_path = os.path.join(roi_dir, f"{image_name}_rois.zip")
+                image_name_without_extension = os.path.splitext(image_name)[0]
+                roi_path = os.path.join(roi_dir, f"{image_name_without_extension}.zip")
                 roifile.roiwrite(roi_path, roi_list)
 
     def show_save_all(self):
