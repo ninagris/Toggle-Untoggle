@@ -524,7 +524,7 @@ class ImageProcessingApp(QMainWindow):
                 rotated_mask = np.rot90(flipped_mask, k=-1) 
                 # Convert masks to ROIs
                 roi_list = []
-                unique_labels = np.unique(rotated_mask)[1:]
+                unique_labels = all_props_df[all_props_df["image_name"] == image_name]["label"].unique()
 
                 for label in unique_labels:
                     binary_mask = (rotated_mask == label).astype(np.uint8)
