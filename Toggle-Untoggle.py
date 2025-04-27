@@ -491,11 +491,18 @@ class ImageProcessingApp(QMainWindow):
                     images_to_remove.append(f"{callback_entry['name']}{callback_entry['label']}")  # Concatenate name and label
 
         all_props_df['filter'] = all_props_df['image_name'].astype(str) + all_props_df['label'].astype(str)
-        all_props_df = all_props_df[~all_props_df['filter'].isin(images_to_remove)]
-        all_props_df = all_props_df.drop('filter', axis=1)
+        correct_props_df = all_props_df[~all_props_df['filter'].isin(images_to_remove)]
+        correct_props_df = correct_props_df.drop('filter', axis=1)
+        excluded_props_df = all_props_df[all_props_df['filter'].isin(images_to_remove)]
+        excluded_props_df = excluded_props_df.drop('filter', axis=1)
+
         if save_csv:
-            output_file_path = os.path.join(self.images_folder_path.text(), self.output_file.text() + '.csv')
-            all_props_df.to_csv(output_file_path, index=False)
+            correct_output_file_path = os.path.join(self.images_folder_path.text(), self.output_file.text() + '.csv')
+            correct_props_df.to_csv(correct_output_file_path, index=False)
+            
+            excluded_output_file_path = os.path.join(self.images_folder_path.text(), 'excluded_objects.csv')
+            if not excluded_props_df.empty:
+                excluded_props_df.to_csv(excluded_output_file_path, index=False)
 
         if save_rois:
             roi_dir = os.path.join(self.images_folder_path.text(), "rois")
