@@ -34,7 +34,7 @@ class ImageProcessingApp(QMainWindow):
         self.tabs = QTabWidget()
         self.tabs.setTabPosition(QTabWidget.TabPosition.North)
         self.setCentralWidget(self.tabs)
-        self.tabs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.tabs.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.tabs.setStyleSheet("""
             QTabBar::tab {
                 font-family: Arial;
@@ -172,7 +172,7 @@ class ImageProcessingApp(QMainWindow):
 
         # A widget that will contain all input elements
         input_container = QWidget()
-        input_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        input_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         layout = QVBoxLayout(input_container)
         layout.setContentsMargins(40, 5, 0, 0)
@@ -634,9 +634,9 @@ class ImageProcessingApp(QMainWindow):
         scaled_height = 550  # Target height for each image
         
         # Scale all images consistently
-        scaled_pixmap_gray = pixmap_gray.scaled(scaled_width, scaled_height, Qt.AspectRatioMode.KeepAspectRatio, Qt.SmoothTransformation)
-        scaled_pixmap_rgb = pixmap_rgb.scaled(scaled_width, scaled_height, Qt.AspectRatioMode.KeepAspectRatio, Qt.SmoothTransformation)
-        scaled_pixmap_overlay = pixmap_overlay.scaled(scaled_width, scaled_height, Qt.AspectRatioMode.KeepAspectRatio, Qt.SmoothTransformation)
+        scaled_pixmap_gray = pixmap_gray.scaled(scaled_width, scaled_height, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        scaled_pixmap_rgb = pixmap_rgb.scaled(scaled_width, scaled_height, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        scaled_pixmap_overlay = pixmap_overlay.scaled(scaled_width, scaled_height, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
 
         label_rgb.setPixmap(scaled_pixmap_rgb)
         label_overlay.setPixmap(scaled_pixmap_overlay)
@@ -664,7 +664,7 @@ class ImageProcessingApp(QMainWindow):
         if self.image_layout is None:
             self.image_layout = self.create_images_tab()
 
-        self.image_layout.addWidget(combined_container, alignment=Qt.AlignTop)
+        self.image_layout.addWidget(combined_container, alignment=Qt.AlignmentFlag.AlignTop)
     
     def toggle_help(self):
         """
@@ -673,10 +673,11 @@ class ImageProcessingApp(QMainWindow):
         if self.help_text.isVisible():
             self.help_text.setVisible(False)
         else:
-            self.help_text.setWindowFlags(Qt.WindowStaysOnTopHint)
+            self.help_text.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint)
             # Resize the window
             self.help_text.resize(800, 500)  
-            self.help_text.setAlignment(Qt.AlignLeft)
+            self.help_text.setAlignment(Qt.AlignmentFlag.AlignLeft)
+
             # Center the help window within the parent widget
             parent_geometry = self.geometry()
             help_x = parent_geometry.x() + (parent_geometry.width() - self.help_text.width()) // 2
@@ -885,8 +886,8 @@ class ImageProcessingWorker(QThread):
 
                             # Converting processed images to QPixmap
                             pixmap_gray = convert_to_pixmap(gray_image, QImage.Format.Format_Grayscale8)
-                            pixmap_rgb = convert_to_pixmap(np.concatenate([rgb, np.full((rgb.shape[0], rgb.shape[1], 1), 255, dtype=np.uint8)], axis=-1), QImage.Format_RGBA8888)
-                            pixmap_overlay = convert_to_pixmap(np.concatenate([overlay_image, np.full((overlay_image.shape[0], overlay_image.shape[1], 1), 255, dtype=np.uint8)], axis=-1), QImage.Format_RGBA8888)
+                            pixmap_rgb = convert_to_pixmap(np.concatenate([rgb, np.full((rgb.shape[0], rgb.shape[1], 1), 255, dtype=np.uint8)], axis=-1), QImage.Format.Format_RGBA8888)
+                            pixmap_overlay = convert_to_pixmap(np.concatenate([overlay_image, np.full((overlay_image.shape[0], overlay_image.shape[1], 1), 255, dtype=np.uint8)], axis=-1), QImage.Format.Format_RGBA8888)
                             # Emitting signal to update the UI with the processed images
                             self.image_processed.emit(main_marker_image_name, pixmap_gray, pixmap_rgb, pixmap_overlay, masks_list)
 

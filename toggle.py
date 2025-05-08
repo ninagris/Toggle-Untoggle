@@ -43,11 +43,11 @@ class ImageViewer(QGraphicsView):
         self.callback_dict = {} # Collect callback functions for each mask
 
         # Disable scroll bars
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.setTransformationAnchor(QGraphicsView.NoAnchor)
-        self.setResizeAnchor(QGraphicsView.NoAnchor)
-        self.setDragMode(QGraphicsView.NoDrag)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
+        self.setDragMode(QGraphicsView.DragMode.NoDrag)
         self.setStyleSheet("border: none; padding: 0px; margin: 0px;")
 
         # Set up a container for the image
@@ -75,7 +75,7 @@ class ImageViewer(QGraphicsView):
             color = colors[i] 
             mask_pixmap = self.convert_mask_to_pixmap(mask, color) 
             # Scale the mask to match the image size
-            mask_pixmap = mask_pixmap.scaled(pixmap.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.SmoothTransformation)
+            mask_pixmap = mask_pixmap.scaled(pixmap.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             # Make each mask clickable and put it on top of an image
             mask_item = ClickableMask(mask_pixmap, name, label, click_callback=self.mask_click_callback)
             mask_item.setZValue(1)  # Ensure masks are on top
@@ -84,7 +84,7 @@ class ImageViewer(QGraphicsView):
 
     # override method
     def resizeEvent(self, event):
-        self.fitInView(self.pixmap_item, Qt.KeepAspectRatio)  # Keep it fixed
+        self.fitInView(self.pixmap_item, Qt.AspectRatioMode.KeepAspectRatio)  # Keep it fixed
         event.accept()
 
     def generate_colors(self, num_colors):
