@@ -223,6 +223,7 @@ class ImageProcessingApp(QMainWindow):
         self.unique_main_marker_identifier = QLineEdit("")
         self.unique_nucleus_identifier = QLineEdit("")
         self.diameter = QLineEdit("20")
+        self.flow_threshold = QLineEdit("0.4")
         self.min_area = QLineEdit("150")
         self.min_non_black_pixels_percentage = QLineEdit("10")
         self.intensity_threshold = QLineEdit("70")
@@ -233,8 +234,8 @@ class ImageProcessingApp(QMainWindow):
         # Setting parameters for input fields
         for input_field in [
             self.images_folder_path, self.output_file, self.condition_name, self.rep_num, 
-            self.unique_main_marker_identifier, self.unique_nucleus_identifier, self.diameter, self.min_area,
-            self.min_non_black_pixels_percentage, self.intensity_threshold,
+            self.unique_main_marker_identifier, self.unique_nucleus_identifier, self.diameter, self.flow_threshold,
+            self.min_area, self.min_non_black_pixels_percentage, self.intensity_threshold,
             self.min_nucleus_pixels_percentage, self.nucleus_pixel_threshold, self.pixel_rate,
             self.main_marker_low_contrast_widget, self.main_marker_high_contrast_widget,
             self.nucleus_low_contrast_widget, self.nucleus_high_contrast_widget,
@@ -311,12 +312,13 @@ class ImageProcessingApp(QMainWindow):
         add_row("Lower Percentile of Pixel Intensities for Nucleus Channel:", self.nucleus_low_contrast_widget, 9)
         add_row("Upper Percentile of Pixel Intensities for Nucleus Channel:", self.nucleus_high_contrast_widget, 10)
         add_row("Average Cell Diameter (µm):", self.diameter, 11)
-        add_row("Min Cell Area (µm²):", self.min_area, 12)
-        add_row("Minimum Percentage of Image Occupied by Cells:", self.min_non_black_pixels_percentage, 13)
-        add_row("Segmentation Channel Intensity Threshold:", self.intensity_threshold, 14)
-        add_row("Minimum Percentage of Cell Area Occupied by Nucleus:", self.min_nucleus_pixels_percentage, 15)
-        add_row("Nucleus Channel Intensity Threshold:", self.nucleus_pixel_threshold, 16)
-        add_row("Pixel-to-Micron Ratio:", self.pixel_rate, 17)
+        add_row("Flow Threshold:", self.flow_threshold, 12)
+        add_row("Min Cell Area (µm²):", self.min_area, 13)
+        add_row("Minimum Percentage of Image Occupied by Cells:", self.min_non_black_pixels_percentage, 14)
+        add_row("Segmentation Channel Intensity Threshold:", self.intensity_threshold, 15)
+        add_row("Minimum Percentage of Cell Area Occupied by Nucleus:", self.min_nucleus_pixels_percentage, 16)
+        add_row("Nucleus Channel Intensity Threshold:", self.nucleus_pixel_threshold, 17)
+        add_row("Pixel-to-Micron Ratio:", self.pixel_rate, 18)
 
         # Adding the grid layout to the main layout
         layout.addLayout(grid_layout)
@@ -564,6 +566,7 @@ class ImageProcessingApp(QMainWindow):
             nucleus_contrast_low = self.nucleus_low_contrast_slider.value()
             nucleus_contrast_high = self.nucleus_high_contrast_slider.value()
             diam = int(self.diameter.text())
+            flow_thresh = float(self.flow_threshold.text())
             min_area = int(self.min_area.text())
             min_non_black_pixels_percentage = float(self.min_non_black_pixels_percentage.text())
             intensity_threshold = int(self.intensity_threshold.text())
@@ -586,7 +589,7 @@ class ImageProcessingApp(QMainWindow):
             # Creating the worker to process images in the background
             self.worker = ImageProcessingWorker(self.images, folder_path, condition_name, rep_num, main_marker_identifier, nucleus_identifier, color, 
                                                 main_marker_contrast_low, main_marker_contrast_high, nucleus_contrast_low, nucleus_contrast_high, 
-                                                diam, min_area, min_non_black_pixels_percentage, intensity_threshold, min_nucleus_pixels_percentage,
+                                                diam, flow_thresh, min_area, min_non_black_pixels_percentage, intensity_threshold, min_nucleus_pixels_percentage,
                                             nucleus_pixel_threshold, pixel_conv_rate, output_file, self.progress_bar, self.model)
 
             # Connecting the worker's signal to the slot to update the UI
@@ -710,12 +713,13 @@ class ImageProcessingApp(QMainWindow):
             "10. Lower Percentile for Nucleus Channel: : the lower percentile of pixel intensities for the nucleus channel image.Any intensity below this percentile is mapped to 0 (black).\n\n"
             "11. Upper Percentile for Nucleus Channel: the upper percentile of pixel intensities for the nucleus channel image.Any intensity above this percentile is mapped to 1 (white).\n\n"
             "12. Average Cell Diameter: The typical cell diameter in microns.\n\n"
-            "13. Min Cell Area: The minimum area for a valid cell in microns.\n\n"
-            "14. Minimum Percentage of Image Occupied by Cells: Increase if empty images appear.\n\n"
-            "15. Actin Channel Intensity Threshold: Adjust to refine segmentation.\n\n"
-            "16. Minimum Percentage of Cell Area Occupied by Nucleus: Adjust for better segmentation.\n\n"
-            "17. Blue (DAPI) Pixel Threshold: Minimum fluorescence intensity for nucleus detection.\n\n"
-            "18. Pixel Conversion Rate: The conversion factor from pixels to microns, varies across microscopes. For EVOS: 20x: 0.354, 40x: 0.18, 60x: 0.12\n"
+            "13. Flow Threshold: the maximum allowed error of the flows for each mask. Increase this threshold if segmentation is not returning as many ROIs as you expect. Similarly, decrease this threshold if cellpose is returning too many incorrect masks.\n\n"
+            "14. Min Cell Area: The minimum area for a valid cell in microns.\n\n"
+            "15. Minimum Percentage of Image Occupied by Cells: Increase if empty images appear.\n\n"
+            "16. Actin Channel Intensity Threshold: Adjust to refine segmentation.\n\n"
+            "17. Minimum Percentage of Cell Area Occupied by Nucleus: Adjust for better segmentation.\n\n"
+            "18. Blue (DAPI) Pixel Threshold: Minimum fluorescence intensity for nucleus detection.\n\n"
+            "19. Pixel Conversion Rate: The conversion factor from pixels to microns, varies across microscopes. For EVOS: 20x: 0.354, 40x: 0.18, 60x: 0.12\n"
         )
     
     # Override function
@@ -737,7 +741,7 @@ class ImageProcessingWorker(QThread):
     progress_updated = pyqtSignal(int) # Signal for a progress bar updates
 
     def __init__(self, images, folder_path, condition_name, rep_num, main_marker_identifier, nucleus_identifier,  color,  main_marker_contrast_low,
-                 main_marker_contrast_high, nucleus_contrast_low, nucleus_contrast_high,  diam, min_area, min_non_black_pixels_percentage,
+                 main_marker_contrast_high, nucleus_contrast_low, nucleus_contrast_high,  diam, thresh, min_area, min_non_black_pixels_percentage,
                  intensity_threshold, min_nucleus_pixels_percentage, nucleus_pixel_threshold, pixel_conv_rate, output_file, progress_bar, model):
         super().__init__()
         self.folder_path = folder_path
@@ -752,6 +756,7 @@ class ImageProcessingWorker(QThread):
         self.nucleus_contrast_low = nucleus_contrast_low
         self.nucleus_contrast_high = nucleus_contrast_high
         self.diam = diam
+        self.thresh = thresh
         self.min_area = min_area
         self.min_non_black_pixels_percentage = min_non_black_pixels_percentage
         self.intensity_threshold = intensity_threshold
@@ -854,7 +859,7 @@ class ImageProcessingWorker(QThread):
                         if not self.active:
                             break
                        
-                        predicted_masks, _, _, _ = self.model.eval(main_marker_image, diameter=diamet, channels=[0, marker_channel_color])
+                        predicted_masks, _, _, _ = self.model.eval(main_marker_image, diameter=diamet, flow_threshold = self.thresh,  channels=[0, marker_channel_color])
 
                         if not self.active:
                             break
