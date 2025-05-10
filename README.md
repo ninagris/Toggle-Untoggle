@@ -1,4 +1,4 @@
-![Logo](https://github.com/ninagris/toggle-untoggle/images/logo.png)
+![Logo](https://github.com/ninagris/Toggle-Untoggle/blob/main/images/logo.png)
 
 An Interactive Desktop Application for Cell Segmentation and Single-Cell Morphological Parameter Extraction
 
