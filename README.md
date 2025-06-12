@@ -16,3 +16,5 @@ Note: The application is currently available only for macOS (M1–M3).
 1. Go to the releases page and download the latest version of the software
 2. Unzip the downloaded file
 3. If your computer prevents the app from opening due to security settings, go to System Settings → Privacy & Security, then allow the app to open under “Apps from unidentified developers”
+
+
