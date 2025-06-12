@@ -209,6 +209,7 @@ haralick_df = move_cols(concat_df)
 
 # Save final dataframe to the specified directory
 haralick_df.to_csv(save_path, index=False)
+print("The process is completed!")
 
 
 
