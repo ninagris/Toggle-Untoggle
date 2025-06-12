@@ -4,6 +4,7 @@ import pandas as pd
 import os
 import torch
 import roifile
+import zipfile
 
 from PyQt6.QtWidgets import QApplication, QLabel, QPushButton
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QMainWindow
@@ -482,71 +483,120 @@ class ImageProcessingApp(QMainWindow):
         return image_layout 
 
     def collect_all_callbacks(self):
+        """
+        Main method to process mask callbacks and export data.
+        Depending on the user selections, this function filters out inactive masks,
+        saves the active properties to a CSV file, and/OR generates ROI ZIP files.
+        """
 
-        save_rois = self.roi_checkbox.isChecked()  # Checking if the "ROIs" checkbox is checked
-        save_csv = self.single_cell_checkbox.isChecked() # Checking if the "CSV" checkbox is checked
-        all_props_df = self.worker.all_props_df.copy()
-        images_to_remove = []
-        for view in self.gray_viewers:
-            for callback_entry in view.callback_dict.values():
-                if not callback_entry['is_active']:  # Check if the mask is inactive
-                    images_to_remove.append(f"{callback_entry['name']}{callback_entry['label']}")  # Concatenate name and label
-
-        all_props_df['filter'] = all_props_df['image_name'].astype(str) + all_props_df['label'].astype(str)
-        correct_props_df = all_props_df[~all_props_df['filter'].isin(images_to_remove)]
-        correct_props_df = correct_props_df.drop('filter', axis=1)
-        excluded_props_df = all_props_df[all_props_df['filter'].isin(images_to_remove)]
-        excluded_props_df = excluded_props_df.drop('filter', axis=1)
-
+        save_rois = self.roi_checkbox.isChecked()
+        save_csv = self.single_cell_checkbox.isChecked()
+        correct_props_df, excluded_props_df = self.filter_active_props(save_rois)
         if save_csv:
-            correct_output_file_path = os.path.join(self.images_folder_path.text(), self.output_file.text() + '.csv')
-            correct_props_df.to_csv(correct_output_file_path, index=False)
-            
-            excluded_output_file_path = os.path.join(self.images_folder_path.text(), 'excluded_objects.csv')
-            if not excluded_props_df.empty:
-                excluded_props_df.to_csv(excluded_output_file_path, index=False)
-
+            self.save_props_to_csv(correct_props_df, excluded_props_df)
         if save_rois:
-            roi_dir = os.path.join(self.images_folder_path.text(), "rois")
-            image_masks_dict = {}
-            os.makedirs(roi_dir, exist_ok=True)
+            self.save_rois_to_zip(correct_props_df)
 
-            for _, row in all_props_df.iterrows():
-                image_name = row['image_name']
-                label = row['label']
-                mask_key = f"{image_name}{label}"
+    def filter_active_props(self, add_roi_name=False):
 
-                if mask_key in self.worker.masks_dict:
-                    mask_entry = self.worker.masks_dict[mask_key]
-                    original_shape = self.worker.image_shape 
+        """
+        Filters the properties DataFrame to exclude untoggled objects.
+        
+        Parameters:
+            add_roi_name (bool): If True, generates an 'roi_name' column for each object.
+            
+        Returns:
+            Tuple[pd.DataFrame, pd.DataFrame]: A tuple containing the filtered (kept) DataFrame 
+            and the excluded (removed) DataFrame.
+        """
+        
+        all_props_df = self.worker.all_props_df.copy()
 
-                    if image_name not in image_masks_dict:
-                        image_masks_dict[image_name] = np.zeros(original_shape, dtype=np.uint8)
+        # Identifying untoggled masks
+        objects_to_remove = []
+        for view in self.gray_viewers:
+            for cb in view.callback_dict.values():
+                if not cb['is_active']:
+                    objects_to_remove.append(f"{cb['name']}{cb['label']}")
 
-                    mask = mask_entry["mask"]
-                    image_masks_dict[image_name][mask > 0] = label
+        all_props_df['filter'] = all_props_df['image_name'].astype(str) + all_props_df['label'].astype(str) 
 
-            # Save masks as TIFF and ROIs as ZIP
-            for image_name, full_mask in image_masks_dict.items():
-                # Flip the mask to fit the image
-                flipped_mask = np.flipud(full_mask)
-                rotated_mask = np.rot90(flipped_mask, k=-1) 
-                # Convert masks to ROIs
-                roi_list = []
-                unique_labels = all_props_df[all_props_df["image_name"] == image_name]["label"].unique()
+        # Add roi_name for each object if applicable
+        if add_roi_name:
+            all_props_df['roi_name'] = all_props_df.apply(
+                lambda row: f"{os.path.splitext(row['image_name'])[0]}_label{row['label']}.roi", axis=1
+            )
+        # Filtering out the untoggled cells from the dataframe
+        correct = all_props_df[~all_props_df['filter'].isin(objects_to_remove)].drop(columns='filter')
+        excluded = all_props_df[all_props_df['filter'].isin(objects_to_remove)].drop(columns='filter')
+        
+        return correct, excluded
+    
+    def save_props_to_csv(self, correct_df, excluded_df):
 
-                for label in unique_labels:
-                    binary_mask = (rotated_mask == label).astype(np.uint8)
-                    contours = measure.find_contours(binary_mask, 0.5)
+        """
+        Saves filtered single-cell properties to CSV files.
+        
+        Parameters:
+            correct_df (pd.DataFrame): DataFrame of active, valid objects to keep.
+            excluded_df (pd.DataFrame): DataFrame of filtered-out (inactive) objects.
+        """
+        
+        output_dir = self.images_folder_path.text()
+        output_csv = os.path.join(output_dir, self.output_file.text() + '.csv')
+        correct_df.to_csv(output_csv, index=False)
 
-                    for contour in contours:
-                        contour = np.round(contour).astype(np.int32)
-                        roi = roifile.ImagejRoi.frompoints(contour)
-                        roi_list.append(roi)
-                # Save all ROIs for this image in a single ZIP file
-                image_name_without_extension = os.path.splitext(image_name)[0]
-                roi_path = os.path.join(roi_dir, f"{image_name_without_extension}.zip")
-                roifile.roiwrite(roi_path, roi_list)
+        if not excluded_df.empty:
+            excluded_csv = os.path.join(output_dir, 'excluded_objects.csv')
+            excluded_df.to_csv(excluded_csv, index=False)
+    
+    def save_rois_to_zip(self, correct_df):
+
+        """
+        Converts segmentation masks into ROI files and packages them into ZIP archives.
+        
+        Parameters:
+            correct_df (pd.DataFrame): DataFrame containing valid objects to convert into ROIs.
+        """
+        roi_dir = os.path.join(self.images_folder_path.text(), "rois")
+        os.makedirs(roi_dir, exist_ok=True)
+        image_masks_dict = {}
+
+        for _, row in correct_df.iterrows():
+            image_name = row['image_name']
+            label = row['label']
+            mask_key = f"{image_name}{label}"
+
+            if mask_key in self.worker.masks_dict:
+                mask = self.worker.masks_dict[mask_key]["mask"]
+                if image_name not in image_masks_dict:
+                    shape = self.worker.image_shape
+                    image_masks_dict[image_name] = np.zeros(shape, dtype=np.uint8)
+                image_masks_dict[image_name][mask > 0] = label
+
+        for image_name, full_mask in image_masks_dict.items():
+            rotated_mask = np.rot90(np.flipud(full_mask), k=-1)
+            roi_list = []
+            labels = correct_df[correct_df["image_name"] == image_name]["label"].unique()
+
+            for label in labels:
+                binary_mask = (rotated_mask == label).astype(np.uint8)
+                contours = measure.find_contours(binary_mask, 0.5)
+                for contour in contours:
+                    contour = np.round(contour).astype(np.int32)
+                    if contour.shape[0] < 10:
+                        continue
+                    roi = roifile.ImagejRoi.frompoints(contour)
+                    roi_filename = f"{os.path.splitext(image_name)[0]}_label{label}.roi"
+                    roi_list.append((roi_filename, roi))
+
+            if roi_list:
+                zip_path = os.path.join(roi_dir, f"{os.path.splitext(image_name)[0]}.zip")
+                if os.path.exists(zip_path):
+                    os.remove(zip_path)
+                with zipfile.ZipFile(zip_path, 'w') as zipf:
+                    for roi_filename, roi in roi_list:
+                        zipf.writestr(roi_filename, roi.tobytes())
 
     def show_save_all(self):
         self.image_layout.addWidget(self.button_widget)

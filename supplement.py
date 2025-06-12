@@ -21,7 +21,7 @@ def delete_dot_underscore_files(directory):
 
 def open_folder(image_folder, ids_list):
     """
-    Putting pairs of TIFF images needed for segmentation in the dictionary
+    Putting sets of TIFF images needed for segmentation in the dictionary
     """
     image_dict = {}
     delete_dot_underscore_files(image_folder)
@@ -112,6 +112,8 @@ def analyze_segmented_cells(predicted_masks,
                          rgb_image,
                          condition_name,
                          replicate_num,
+                         third_marker = None,
+                         fourth_marker=None,
                          properties = ['label', 'area', 'bbox_area', 'area_convex', 'perimeter', 'eccentricity', 'extent', 'major_axis_length', 
                         'minor_axis_length', 'centroid', 'mean_intensity', 'max_intensity', 'min_intensity',
                         'equivalent_diameter_area', 'feret_diameter_max' ,'orientation','perimeter_crofton','solidity']):
@@ -166,6 +168,10 @@ def analyze_segmented_cells(predicted_masks,
         temp_df = pd.DataFrame(valid_props)
         temp_df['image_name'] = main_marker_image_name
         temp_df = temp_df[['image_name'] + [col for col in temp_df.columns if col != 'image_name']]
+        
+        # Cleaning up centroid into two float columns
+        temp_df[['centroid_y', 'centroid_x']] = pd.DataFrame(temp_df['centroid'].tolist(), index=temp_df.index)
+        temp_df.drop(columns='centroid', inplace=True)
         temp_df['Condition']=condition_name
         temp_df['Replicate']=replicate_num
         
