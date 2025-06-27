@@ -1,5 +1,5 @@
 import numpy as np
-
+import cv2
 from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem
 from PyQt6.QtGui import QPixmap, QImage, QColor
 from PyQt6.QtCore import Qt

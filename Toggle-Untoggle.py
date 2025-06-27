@@ -160,7 +160,6 @@ class ImageProcessingApp(QMainWindow):
 
             self.worker.finished.connect(lambda: self.stop_button.deleteLater() if hasattr(self, "stop_button") and self.stop_button else None)
 
-
     def create_input_form(self):
         """
         Placeholder for images 
@@ -301,25 +300,25 @@ class ImageProcessingApp(QMainWindow):
             grid_layout.addWidget(input_widget, row, 1)
 
         # Adding each input field and label to the grid layout
-        add_row("Images Folder Path:", self.images_folder_path, 0)
-        add_row("Output File Name:", self.output_file, 1)
-        add_row("Condition Name:", self.condition_name, 2)
-        add_row("Replicate #:", self.rep_num, 3)
-        add_row("Segmentation Channel File ID:", self.unique_main_marker_identifier, 4)
-        add_row("Nucleus Channel File ID:", self.unique_nucleus_identifier, 5)
-        add_row("Segmentation Channel Color:", self.main_marker_channel_dropdown, 6)
-        add_row("Lower Percentile of Pixel Intensities for Segmentation Marker Channel:", self.main_marker_low_contrast_widget, 7)
-        add_row("Upper Percentile of Pixel Intensities for Segmentation Marker Channel:", self.main_marker_high_contrast_widget, 8)
-        add_row("Lower Percentile of Pixel Intensities for Nucleus Channel:", self.nucleus_low_contrast_widget, 9)
-        add_row("Upper Percentile of Pixel Intensities for Nucleus Channel:", self.nucleus_high_contrast_widget, 10)
-        add_row("Average Cell Diameter (µm):", self.diameter, 11)
-        add_row("Flow Threshold:", self.flow_threshold, 12)
-        add_row("Min Cell Area (µm²):", self.min_area, 13)
-        add_row("Minimum Percentage of Image Occupied by Cells:", self.min_non_black_pixels_percentage, 14)
-        add_row("Segmentation Channel Intensity Threshold:", self.intensity_threshold, 15)
-        add_row("Minimum Percentage of Cell Area Occupied by Nucleus:", self.min_nucleus_pixels_percentage, 16)
-        add_row("Nucleus Channel Intensity Threshold:", self.nucleus_pixel_threshold, 17)
-        add_row("Pixel-to-Micron Ratio:", self.pixel_rate, 18)
+        add_row("1. Images Folder Path:", self.images_folder_path, 0)
+        add_row("2. Output File Name:", self.output_file, 1)
+        add_row("3. Condition Name:", self.condition_name, 2)
+        add_row("4. Replicate #:", self.rep_num, 3)
+        add_row("5. Segmentation Channel File ID:", self.unique_main_marker_identifier, 4)
+        add_row("6. Nucleus Channel File ID:", self.unique_nucleus_identifier, 5)
+        add_row("7. Segmentation Channel Color:", self.main_marker_channel_dropdown, 6)
+        add_row("8. Lower Percentile of Pixel Intensities for Segmentation Marker Channel:", self.main_marker_low_contrast_widget, 7)
+        add_row("9. Upper Percentile of Pixel Intensities for Segmentation Marker Channel:", self.main_marker_high_contrast_widget, 8)
+        add_row("10. Lower Percentile of Pixel Intensities for Nucleus Channel:", self.nucleus_low_contrast_widget, 9)
+        add_row("11. Upper Percentile of Pixel Intensities for Nucleus Channel:", self.nucleus_high_contrast_widget, 10)
+        add_row("12. Average Cell Diameter (µm):", self.diameter, 11)
+        add_row("13. Flow Threshold:", self.flow_threshold, 12)
+        add_row("14. Min Cell Area (µm²):", self.min_area, 13)
+        add_row("15. Minimum Percentage of Image Occupied by Cells:", self.min_non_black_pixels_percentage, 14)
+        add_row("16. Segmentation Channel Intensity Threshold:", self.intensity_threshold, 15)
+        add_row("17. Minimum Percentage of Cell Area Occupied by Nucleus:", self.min_nucleus_pixels_percentage, 16)
+        add_row("18. Nucleus Channel Intensity Threshold:", self.nucleus_pixel_threshold, 17)
+        add_row("19. Pixel-to-Micron Ratio:", self.pixel_rate, 18)
 
         # Adding the grid layout to the main layout
         layout.addLayout(grid_layout)

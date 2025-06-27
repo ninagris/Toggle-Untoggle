@@ -126,6 +126,7 @@ def analyze_segmented_cells(predicted_masks,
     valid_props = []
     valid_regions = []
     mask_list = []  # List that is eventually populated with dictionaries for individual objects
+    new_label_counter = 1 # to make sure mask labeling starts with 1 after filtering
     for region in measure.regionprops(cleared_mask, intensity_image=main_marker_image): # Calculating properties for the masks of cells
         region_mask = (cleared_mask == region.label) # Obtaining the mask of the individual regions
         """ Checking for the presence of nucleus inside the cell"""
@@ -142,9 +143,11 @@ def analyze_segmented_cells(predicted_masks,
             # Appending dictionary with the info for the cell to the list for the whole image
             mask_list.append({
                 "image_name": main_marker_image_name,
-                "label": region.label,
+                "label": new_label_counter,
                 "mask": region_mask
             })
+
+            new_label_counter += 1  # Increment for next valid object
     
     # Generating grayscale image for further mask overlay
     rgb_image_copy = rgb_image.copy()
@@ -166,12 +169,15 @@ def analyze_segmented_cells(predicted_masks,
 
     if valid_props: 
         temp_df = pd.DataFrame(valid_props)
-        temp_df['image_name'] = main_marker_image_name
-        temp_df = temp_df[['image_name'] + [col for col in temp_df.columns if col != 'image_name']]
-        
+        # Overriding skimage-given labels to have them start at 1
+        temp_df['label'] = list(range(1, len(temp_df) + 1))
         # Cleaning up centroid into two float columns
         temp_df[['centroid_y', 'centroid_x']] = pd.DataFrame(temp_df['centroid'].tolist(), index=temp_df.index)
         temp_df.drop(columns='centroid', inplace=True)
+
+        temp_df['image_name'] = main_marker_image_name
+        temp_df = temp_df[['image_name'] + [col for col in temp_df.columns if col != 'image_name']]
+        
         temp_df['Condition']=condition_name
         temp_df['Replicate']=replicate_num
         
