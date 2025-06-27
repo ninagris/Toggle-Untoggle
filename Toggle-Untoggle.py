@@ -943,7 +943,14 @@ class ImageProcessingWorker(QThread):
                             pixmap_rgb = convert_to_pixmap(np.concatenate([rgb, np.full((rgb.shape[0], rgb.shape[1], 1), 255, dtype=np.uint8)], axis=-1), QImage.Format.Format_RGBA8888)
                             pixmap_overlay = convert_to_pixmap(np.concatenate([overlay_image, np.full((overlay_image.shape[0], overlay_image.shape[1], 1), 255, dtype=np.uint8)], axis=-1), QImage.Format.Format_RGBA8888)
                             # Emitting signal to update the UI with the processed images
-                            self.image_processed.emit(main_marker_image_name, pixmap_gray, pixmap_rgb, pixmap_overlay, masks_list)
+
+                            if len(df)==1:
+                                display_name = f"{main_marker_image_name}: 1 cell processed"
+                            else:
+                                display_name = f"{main_marker_image_name}: {len(df)} cells processed"
+
+
+                            self.image_processed.emit(display_name, pixmap_gray, pixmap_rgb, pixmap_overlay, masks_list)
 
                             self.count += 1
 
