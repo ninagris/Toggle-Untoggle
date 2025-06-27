@@ -52,12 +52,26 @@ class ImageProcessingApp(QMainWindow):
             }
         """)
 
+        # Creating the clickable GitHub link QLabel
+        self.github_link = QLabel()
+        self.github_link.setText(
+            '<a href="https://github.com/ninagris/Toggle-Untoggle" style="font-size:18px;">'
+            'Our GitHub page</a>'
+        )
+        self.github_link.setTextFormat(Qt.TextFormat.RichText)
+        self.github_link.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+        self.github_link.setOpenExternalLinks(True)
+        self.github_link.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.github_link.setStyleSheet("padding-right: 15px;")
+        self.tabs.setCornerWidget(self.github_link, Qt.Corner.TopRightCorner) # Adding the link to the top right corner of the tab bar
+
         # Customizing Tab for the input parameters
         self.input_tab = QWidget()
         self.create_input_form()
         self.tabs.addTab(self.input_tab, "Input Parameters")
         # List for storing grayscale images with interactive masks
         self.gray_viewers = []
+
 
 
     def create_slider(self, default_value, font_input):
