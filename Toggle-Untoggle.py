@@ -28,7 +28,8 @@ class ImageProcessingApp(QMainWindow):
 
         self.setWindowTitle("Toggle-Untoggle")
         self.setWindowIcon(QIcon("icon.png"))
-        self.resize(800,600)
+        self.resize(1000,800)
+        self.setMinimumSize(1000,800)
         self.showFullScreen()
         
         # Main tab widget With tabs on top
@@ -36,6 +37,7 @@ class ImageProcessingApp(QMainWindow):
         self.tabs.setTabPosition(QTabWidget.TabPosition.North)
         self.setCentralWidget(self.tabs)
         self.tabs.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.tabs.setStyleSheet("""
             QTabBar::tab {
                 font-family: Arial;
@@ -71,9 +73,7 @@ class ImageProcessingApp(QMainWindow):
         self.tabs.addTab(self.input_tab, "Input Parameters")
         # List for storing grayscale images with interactive masks
         self.gray_viewers = []
-
-
-
+    
     def create_slider(self, default_value, font_input):
         """
         Sliders for controlling pixel intensity params
@@ -82,16 +82,21 @@ class ImageProcessingApp(QMainWindow):
         slider = QSlider(Qt.Orientation.Horizontal)
         slider.setMinimum(0)
         slider.setMaximum(100)
+        slider.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         slider.setValue(default_value)
         # Update label when slider moves
         slider.valueChanged.connect(lambda value: label.setText(f"{value}"))
         # Creating a horizontal layout to hold both the slider and the label
         slider_layout = QHBoxLayout()
+        slider_layout.setContentsMargins(0, 0, 15, 0)
+        slider_layout.setSpacing(5)
         slider_layout.addWidget(slider)  # Adding the slider
         slider_layout.addWidget(label, 0, Qt.AlignmentFlag.AlignLeft)  # Adding the label to the right
         # Setting font and styling for the label and slider
+        slider.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         label.setFont(font_input) 
-        label.setFixedWidth(30)
+        label.setMinimumWidth(20)
         label.setStyleSheet("""
             QLabel {
                 font-size: 9px;
@@ -99,11 +104,24 @@ class ImageProcessingApp(QMainWindow):
                 padding-left: 15px;  # Adding a little space between slider and label
             }
         """)
-        slider.setFixedWidth(540) 
+        slider.setMinimumWidth(100) 
+        slider.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         # Container for the layout
         container = QWidget()
         container.setLayout(slider_layout)
+        container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         return container, slider
+    
+    def resizeEvent(self, event):
+        aspect_ratio = 20 / 13
+        new_width = event.size().width()
+        new_height = int(new_width / aspect_ratio)
+        if new_height > event.size().height():
+            new_height = event.size().height()
+            new_width = int(new_height * aspect_ratio)
+        self.resize(new_width, new_height)
+
+
     
     def on_process_stop(self):
         """
@@ -141,7 +159,8 @@ class ImageProcessingApp(QMainWindow):
                 }
                 """)
             self.stop_button.setFont(QFont("Arial", 25))
-            self.stop_button.setFixedSize(200, 50)
+            self.stop_button.setMinimumSize(20, 20)
+            self.stop_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
             button_layout.addWidget(self.stop_button)
             button_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
             self.stop_button.clicked.connect(self.on_process_stop)
@@ -166,7 +185,6 @@ class ImageProcessingApp(QMainWindow):
                 self.image_layout = None
         # Starting processing after clearing the old tab
         self.start_processing()
-
         if self.worker is not None: # Stop buttons appears only if at least one image has been processed
             self.worker.image_processed.connect(lambda *args: 
                 self.update_stop_button(self.worker.count, button_layout) if hasattr(self, "stop_button") and self.stop_button is None else None
@@ -183,28 +201,32 @@ class ImageProcessingApp(QMainWindow):
         main_layout = QHBoxLayout()  # Layout for aligning widgets to the left
         scroll_field = QScrollArea()
         scroll_field.setWidgetResizable(True) 
+        scroll_field.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         # A widget that will contain all input elements
         input_container = QWidget()
         input_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
-        layout = QVBoxLayout(input_container)
-        layout.setContentsMargins(40, 5, 0, 0)
+        layout = QVBoxLayout()
+        input_container.setLayout(layout)
+        layout.setContentsMargins(30, 5, 0, 0)
         layout.setSpacing(5) # Spacing between text sections
 
         # Grid layout for structuring input sections and their corresponding labels
         grid_layout = QGridLayout()
-        grid_layout.setContentsMargins(40, 0, 0, 0)
+        grid_layout.setContentsMargins(5, 5, 0, 0)
         grid_layout.setHorizontalSpacing(20)
         grid_layout.setVerticalSpacing(5)
         font_label = QFont("Arial", 18, QFont.Weight.Bold) # Font for the section labels
         font_input = QFont("Arial", 18) # Font for the input sections
-        grid_layout.setColumnMinimumWidth(0, 300)  # Adjusting the minimum width for the first column (labels)
-        grid_layout.setColumnStretch(5, 5)  # Letting the second column (inputs) stretch to take remaining space
+        grid_layout.setColumnMinimumWidth(0, 100)  # Adjusting the minimum width for the first column (labels) 
+        grid_layout.setColumnStretch(0, 0)  # label column: no stretch
+        grid_layout.setColumnStretch(1, 1)  # input column: stretch to fill
 
         # Customizing the help button
         self.help_button = QPushButton("?")
-        self.help_button.setFixedSize(40, 40)
+        self.help_button.setMinimumSize(30, 30)
+        self.help_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.help_button.setFont(font_label)
         self.help_button.clicked.connect(self.toggle_help) # Connecting the button to a function that toggles help text visibility
         self.help_text = QTextEdit(parent=self)
@@ -228,6 +250,7 @@ class ImageProcessingApp(QMainWindow):
         top_right_layout.addWidget(self.help_button)
         layout.addWidget(top_right_container)
         layout.setAlignment(top_right_container, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
+    
 
         # Input Fields
         self.images_folder_path = QLineEdit("")
@@ -255,8 +278,9 @@ class ImageProcessingApp(QMainWindow):
             self.nucleus_low_contrast_widget, self.nucleus_high_contrast_widget,
         ]:
             input_field.setFont(font_input)
-            input_field.setFixedWidth(600)
-            input_field.setFixedHeight(35)
+            input_field.setMinimumWidth(150)
+            input_field.setMinimumHeight(25)
+            input_field.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
             input_field.setStyleSheet("""
             QLineEdit {
                 border: 1px solid gray;  /* Lighter gray border */
@@ -270,7 +294,8 @@ class ImageProcessingApp(QMainWindow):
         self.main_marker_channel_dropdown.addItem("")  # Empty item as placeholder
         self.main_marker_channel_dropdown.addItems(["red", "green"])
         self.main_marker_channel_dropdown.setFont(font_input)
-        self.main_marker_channel_dropdown.setFixedWidth(600)  
+        self.main_marker_channel_dropdown.setMinimumWidth(150)  
+        self.main_marker_channel_dropdown.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.main_marker_channel_dropdown.setStyleSheet("""
             QComboBox {
                 border: 1px solid gray;
@@ -302,8 +327,9 @@ class ImageProcessingApp(QMainWindow):
      
         # Creating a view for the dropdown menu
         dropdown_view = self.main_marker_channel_dropdown.view()
-        dropdown_view.setFixedWidth(600)
-        dropdown_view.setFixedHeight(100)
+        dropdown_view.setMinimumWidth(150)
+        dropdown_view.setMinimumHeight(30)
+        dropdown_view.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
 
         # Adding rows to the grid layout
         def add_row(label_text, input_widget, row):
@@ -340,7 +366,9 @@ class ImageProcessingApp(QMainWindow):
         # Customizing the start button
         self.process_button = QPushButton("Process Images")
         self.process_button.setFont(QFont("Arial", 25))
-        self.process_button.setFixedSize(200, 50)
+        self.process_button.setMinimumSize(100, 40)
+        self.process_button.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+
         self.process_button.setStyleSheet("""
             QPushButton {
                 font-size: 20pt;  /* Bigger font size */
@@ -357,7 +385,7 @@ class ImageProcessingApp(QMainWindow):
                 background-color: #4682B4;  /* Even darker blue when pressed */
             }
         """)
-        layout.addWidget(self.process_button, Qt.AlignmentFlag.AlignLeft)
+        # layout.addWidget(self.process_button, Qt.AlignmentFlag.AlignLeft)
         self.processing_label = QLabel("")
         self.processing_label.setStyleSheet(
             "color: green; font-size: 22px; font-weight: bold; padding-top: -20px;"
@@ -365,13 +393,14 @@ class ImageProcessingApp(QMainWindow):
         button_layout = QHBoxLayout()
         button_layout.addWidget(self.process_button)
         button_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        button_layout.setContentsMargins(40, 10, 0, 0)
+        button_layout.setContentsMargins(5, 10, 0, 0)
         layout.addLayout(button_layout)
         processing_layout = QHBoxLayout()
         processing_layout.addWidget(self.processing_label)
     
-        self.processing_label.setFixedHeight(60) 
-        processing_layout.setContentsMargins(40, 10, 0, 0) 
+        self.processing_label.setMinimumHeight(40)
+        self.processing_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        processing_layout.setContentsMargins(5, 10, 0, 0)
         layout.addLayout(processing_layout)  # Add layout to main layout
 
         # Progress bar settings
@@ -403,7 +432,8 @@ class ImageProcessingApp(QMainWindow):
         # Add the vertical layout to the main layout
         main_layout.addLayout(layout)
         self.input_tab.setLayout(main_layout)
-       
+    
+      
     def clear_layout(self,layout):
         """
         Helper function to clear all widgets in a layout
@@ -458,7 +488,8 @@ class ImageProcessingApp(QMainWindow):
 
         # Creating save button
         self.save_button = QPushButton("Save")
-        self.save_button.setFixedSize(130, 40) 
+        self.save_button.setMinimumSize(100, 40) 
+        self.save_button.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         self.save_button.setStyleSheet("""
             QPushButton {
                 font-size: 20pt;  /* Bigger font size */
@@ -696,6 +727,9 @@ class ImageProcessingApp(QMainWindow):
         label_gray = QLabel()
         label_rgb = QLabel()
         label_overlay = QLabel()
+        label_rgb.setScaledContents(True)
+        label_overlay.setScaledContents(True)
+        label_gray.setScaledContents(True)
         scaled_width = 450 # Target width for each image
         scaled_height = 550  # Target height for each image
         
@@ -708,6 +742,7 @@ class ImageProcessingApp(QMainWindow):
         label_overlay.setPixmap(scaled_pixmap_overlay)
         label_gray.setPixmap(scaled_pixmap_gray)
 
+        
         # Using the scaled gray image in ImageViewer
         gray_viewer = ImageViewer(scaled_pixmap_gray, masks_list)
 
