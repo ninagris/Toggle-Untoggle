@@ -6,12 +6,12 @@ import torch
 import roifile
 import zipfile
 
-from PyQt6.QtWidgets import QApplication, QLabel, QPushButton
+from PyQt6.QtWidgets import QApplication, QLabel, QPushButton, QFormLayout
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QMainWindow
 from PyQt6.QtWidgets import QTabWidget, QLineEdit, QScrollArea, QComboBox
 from PyQt6.QtWidgets import QGridLayout, QSizePolicy, QStyleFactory, QTextEdit, QProgressBar, QSlider, QCheckBox
 from PyQt6.QtGui import QPixmap, QImage, QFont, QIcon
-from PyQt6.QtCore import Qt, pyqtSignal, QThread
+from PyQt6.QtCore import Qt, pyqtSignal, QThread, QTimer, QPoint
 from skimage import measure
 from cellpose import models
 from functools import partial
@@ -19,6 +19,56 @@ from PIL import Image
 
 from supplement import open_folder, image_preprocessing, analyze_segmented_cells, convert_to_pixmap, normalize_to_uint8, pixel_conversion
 from toggle import ImageViewer
+
+class DraggableTextEdit(QTextEdit):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._drag_active = False
+        self._drag_position = QPoint()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_active = True
+            # Calculate offset between mouse click position and widget top-left corner
+            self._drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._drag_active and event.buttons() & Qt.MouseButton.LeftButton:
+            new_pos = event.globalPosition().toPoint() - self._drag_position
+
+            if self.parent():
+                parent_rect = self.parent().rect()
+                mapped_pos = self.parent().mapFromGlobal(new_pos)
+
+                help_width = self.width()
+                help_height = self.height()
+
+                # Calculate clamp bounds with margin (50 px)
+                max_x = max(parent_rect.width() - 400, 0)
+                max_y = max(parent_rect.height() - 200, 0)
+                min_x = -help_width + 50
+                min_y = -help_height + 50
+
+                x = max(min_x, min(mapped_pos.x(), max_x))
+                y = max(min_y, min(mapped_pos.y(), max_y))
+
+                new_pos = self.parent().mapToGlobal(QPoint(x, y))
+
+            self.move(new_pos)
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
+
+            
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_active = False
+            event.accept()
+        else:
+            super().mouseReleaseEvent(event)
 
 class ImageProcessingApp(QMainWindow):
     def __init__(self):
@@ -28,8 +78,8 @@ class ImageProcessingApp(QMainWindow):
 
         self.setWindowTitle("Toggle-Untoggle")
         self.setWindowIcon(QIcon("icon.png"))
-        self.resize(1000,800)
-        self.setMinimumSize(1000,800)
+        self.resize(850, 700)
+        self.setMinimumSize(850, 700)
         self.showFullScreen()
         
         # Main tab widget With tabs on top
@@ -67,12 +117,19 @@ class ImageProcessingApp(QMainWindow):
         self.github_link.setStyleSheet("padding-right: 15px;")
         self.tabs.setCornerWidget(self.github_link, Qt.Corner.TopRightCorner) # Adding the link to the top right corner of the tab bar
 
+        
         # Customizing Tab for the input parameters
         self.input_tab = QWidget()
         self.create_input_form()
         self.tabs.addTab(self.input_tab, "Input Parameters")
         # List for storing grayscale images with interactive masks
         self.gray_viewers = []
+        self.help_text = DraggableTextEdit(parent=self)
+        self.help_text.setText(self.get_help_text())
+        font = QFont("Arial", 18) 
+        self.help_text.setFont(font)
+        self.help_text.setReadOnly(True)
+        self.help_text.setVisible(False) 
     
     def create_slider(self, default_value, font_input):
         """
@@ -104,7 +161,7 @@ class ImageProcessingApp(QMainWindow):
                 padding-left: 15px;  # Adding a little space between slider and label
             }
         """)
-        slider.setMinimumWidth(100) 
+        slider.setMinimumWidth(80) 
         slider.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         # Container for the layout
         container = QWidget()
@@ -112,17 +169,82 @@ class ImageProcessingApp(QMainWindow):
         container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         return container, slider
     
-    def resizeEvent(self, event):
-        aspect_ratio = 20 / 13
-        new_width = event.size().width()
-        new_height = int(new_width / aspect_ratio)
-        if new_height > event.size().height():
-            new_height = event.size().height()
-            new_width = int(new_height * aspect_ratio)
-        self.resize(new_width, new_height)
+    def toggle_help(self):
+        if self.help_text.isVisible():
+            self.help_text.hide()
+        else:
+            max_width = max(300, self.width() - 20)
+            max_height = max(150, self.height() - 20)
+            self.help_text.resize(min(800, max_width), min(500, max_height))
+            self.help_text.setMinimumSize(300, 150)
+            self.help_text.setAlignment(Qt.AlignmentFlag.AlignLeft)
+            self.help_text.show()
+            self.center_help_text()
+        
+    def center_help_text(self):
+        if not hasattr(self, 'help_text') or not self.help_text.isVisible():
+            return
+        parent = self.input_tab
+        parent_width = parent.width()
+        parent_height = parent.height()
+        help_width = self.help_text.width()
+        help_height = self.help_text.height()
+
+        help_x = (parent_width - help_width) // 2
+        help_y = (parent_height - help_height) // 2
+
+        self.help_text.move(help_x, help_y)
 
 
+
+                
+    def get_help_text(self):
+        """
+        Return formatted help text
+        """
+        return (
+            "1. Images Folder Path: The path to the folder containing the images. Only single-channel images should be present in the folder. If multi-channel display images with the same file IDs are present, you may get no images processed notice.\n\n"  # Add extra newline
+            "2. Output File Name: Not a path, but the desired name for the output .csv file.\n\n"
+            "3. Condition: Additional column with the specified condition.\n\n"
+            "4. Replicate: Additional column with the replicate # specified.\n\n"
+            "5. Unique Actin File Identifier: A keyword unique to actin images (e.g., d2, ch1).\n\n"
+            "6. Unique Dapi File Identifier: A keyword unique to dapi images (e.g., d0, ch2).\n\n"
+            "7. Actin Channel Color: The color of the actin channel (choose from dropdown).\n\n"
+            "8. Lower Percentile for Segmentation Marker Channel: the lower percentile of pixel intensities for the segmentation marker image.Any intensity below this percentile is mapped to 0 (black). Contrast adjustments are there only for visualization purposes.Fluorescence intensity of original images is not modified, and all fluorescence data is extracted from raw images.\n\n"
+            "9. Upper Percentile for Segmentation Marker Channel: the upper percentile of pixel intensities for the segmentation marker image.Any intensity above this percentile is mapped to 1 (white).\n\n"
+            "10. Lower Percentile for Nucleus Channel: : the lower percentile of pixel intensities for the nucleus channel image.Any intensity below this percentile is mapped to 0 (black).\n\n"
+            "11. Upper Percentile for Nucleus Channel: the upper percentile of pixel intensities for the nucleus channel image.Any intensity above this percentile is mapped to 1 (white).\n\n"
+            "12. Average Cell Diameter: The typical cell diameter in microns.\n\n"
+            "13. Flow Threshold: the maximum allowed error of the flows for each mask. Increase this threshold if segmentation is not returning as many ROIs as you expect. Similarly, decrease this threshold if cellpose is returning too many incorrect masks.\n\n"
+            "14. Min Cell Area: The minimum area for a valid cell in microns.\n\n"
+            "15. Minimum Percentage of Image Occupied by Cells: Increase if empty images appear.\n\n"
+            "16. Actin Channel Intensity Threshold: Adjust to refine segmentation.\n\n"
+            "17. Minimum Percentage of Cell Area Occupied by Nucleus: Adjust for better segmentation.\n\n"
+            "18. Blue (DAPI) Pixel Threshold: Minimum fluorescence intensity for nucleus detection.\n\n"
+            "19. Pixel Conversion Rate: The conversion factor from pixels to microns, varies across microscopes. For EVOS: 20x: 0.354, 40x: 0.18, 60x: 0.12\n"
+        )
     
+    def resizeEvent(self, event):
+        # Your aspect ratio code here (keep as is)
+        current_size = self.size()
+        aspect_ratio = 20 / 13
+        desired_width = current_size.width()
+        desired_height = int(desired_width / aspect_ratio)
+
+        if desired_height > current_size.height():
+            desired_height = current_size.height()
+            desired_width = int(desired_height * aspect_ratio)
+
+        if (desired_width, desired_height) != (current_size.width(), current_size.height()):
+            self.resize(desired_width, desired_height)
+            return  # Skip recentering during forced resize
+
+        super().resizeEvent(event)
+
+        if hasattr(self, "help_text") and self.help_text.isVisible():
+            # Defer centering so all layouts & sizes update first
+            QTimer.singleShot(0, self.center_help_text)
+
     def on_process_stop(self):
         """
         Enabling the button to stop the process
@@ -208,9 +330,12 @@ class ImageProcessingApp(QMainWindow):
         input_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         layout = QVBoxLayout()
+        layout.setContentsMargins(15, 5, 15, 5)
+        layout.setSpacing(5)  # controls spacing between each input row
         input_container.setLayout(layout)
-        layout.setContentsMargins(30, 5, 0, 0)
-        layout.setSpacing(5) # Spacing between text sections
+        rows_layout = QVBoxLayout()
+        rows_layout.setSpacing(10)
+
 
         # Grid layout for structuring input sections and their corresponding labels
         grid_layout = QGridLayout()
@@ -229,12 +354,7 @@ class ImageProcessingApp(QMainWindow):
         self.help_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.help_button.setFont(font_label)
         self.help_button.clicked.connect(self.toggle_help) # Connecting the button to a function that toggles help text visibility
-        self.help_text = QTextEdit(parent=self)
-        self.help_text.setText(self.get_help_text())
-        font = QFont("Arial", 18) 
-        self.help_text.setFont(font)
-        self.help_text.setReadOnly(True)
-        self.help_text.setVisible(False) 
+       
 
         # Input fields with sliders
         self.main_marker_low_contrast_widget, self.main_marker_low_contrast_slider = self.create_slider(15, font_input)
@@ -278,8 +398,9 @@ class ImageProcessingApp(QMainWindow):
             self.nucleus_low_contrast_widget, self.nucleus_high_contrast_widget,
         ]:
             input_field.setFont(font_input)
-            input_field.setMinimumWidth(150)
+            input_field.setMinimumWidth(100)
             input_field.setMinimumHeight(25)
+            input_field.setMaximumHeight(40)
             input_field.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
             input_field.setStyleSheet("""
             QLineEdit {
@@ -294,8 +415,10 @@ class ImageProcessingApp(QMainWindow):
         self.main_marker_channel_dropdown.addItem("")  # Empty item as placeholder
         self.main_marker_channel_dropdown.addItems(["red", "green"])
         self.main_marker_channel_dropdown.setFont(font_input)
-        self.main_marker_channel_dropdown.setMinimumWidth(150)  
-        self.main_marker_channel_dropdown.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.main_marker_channel_dropdown.setMinimumWidth(100)  
+        self.main_marker_channel_dropdown.setMinimumHeight(25)  
+        self.main_marker_channel_dropdown.setMaximumHeight(40)
+        self.main_marker_channel_dropdown.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         self.main_marker_channel_dropdown.setStyleSheet("""
             QComboBox {
                 border: 1px solid gray;
@@ -327,41 +450,81 @@ class ImageProcessingApp(QMainWindow):
      
         # Creating a view for the dropdown menu
         dropdown_view = self.main_marker_channel_dropdown.view()
-        dropdown_view.setMinimumWidth(150)
+        dropdown_view.setMinimumWidth(100)
         dropdown_view.setMinimumHeight(30)
         dropdown_view.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
 
-        # Adding rows to the grid layout
-        def add_row(label_text, input_widget, row):
+        self.input_row_count = 1
+        form_layout = QFormLayout()
+        form_layout.setSpacing(10)
+        form_layout.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        form_layout.setFormAlignment(Qt.AlignmentFlag.AlignLeft)
+
+        def add_row(label_text, input_widget):
+            numbered_label = f"{self.input_row_count}. {label_text}"
+            self.input_row_count += 1
+
+            label = QLabel(numbered_label)
+            label.setFont(font_label)
+            input_widget.setFont(font_input)
+            input_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+            form_layout.addRow(label, input_widget)
+
+        # Add all rows here in order
+        add_row("Images Folder Path:", self.images_folder_path)
+        add_row("Output File Name:", self.output_file)
+        add_row("Condition Name:", self.condition_name)
+        add_row("Replicate #:", self.rep_num)
+        add_row("Segmentation Channel File ID:", self.unique_main_marker_identifier)
+
+        # Nucleus checkbox
+        checkbox_label = QLabel(f"{self.input_row_count}. Nucleus channel present")
+        checkbox_label.setFont(font_label)
+        self.nucleus_checkbox = QCheckBox()
+        self.nucleus_checkbox.setStyleSheet("QCheckBox::indicator { width: 25px; height: 25px; }")
+        form_layout.addRow(checkbox_label, self.nucleus_checkbox)
+        self.input_row_count += 1
+
+        # Nucleus section
+        self.nucleus_group_widget = QWidget()
+        nucleus_layout = QFormLayout(self.nucleus_group_widget)
+        nucleus_layout.setSpacing(10)
+        nucleus_layout.setContentsMargins(20, 0, 0, 0)
+        nucleus_layout.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+
+        def add_nucleus_row(label_text, input_widget):
             label = QLabel(label_text)
             label.setFont(font_label)
-            label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-            grid_layout.addWidget(label, row, 0)
-            grid_layout.addWidget(input_widget, row, 1)
+            input_widget.setFont(font_input)
+            input_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            nucleus_layout.addRow(label, input_widget)
 
-        # Adding each input field and label to the grid layout
-        add_row("1. Images Folder Path:", self.images_folder_path, 0)
-        add_row("2. Output File Name:", self.output_file, 1)
-        add_row("3. Condition Name:", self.condition_name, 2)
-        add_row("4. Replicate #:", self.rep_num, 3)
-        add_row("5. Segmentation Channel File ID:", self.unique_main_marker_identifier, 4)
-        add_row("6. Nucleus Channel File ID:", self.unique_nucleus_identifier, 5)
-        add_row("7. Segmentation Channel Color:", self.main_marker_channel_dropdown, 6)
-        add_row("8. Lower Percentile of Pixel Intensities for Segmentation Marker Channel:", self.main_marker_low_contrast_widget, 7)
-        add_row("9. Upper Percentile of Pixel Intensities for Segmentation Marker Channel:", self.main_marker_high_contrast_widget, 8)
-        add_row("10. Lower Percentile of Pixel Intensities for Nucleus Channel:", self.nucleus_low_contrast_widget, 9)
-        add_row("11. Upper Percentile of Pixel Intensities for Nucleus Channel:", self.nucleus_high_contrast_widget, 10)
-        add_row("12. Average Cell Diameter (µm):", self.diameter, 11)
-        add_row("13. Flow Threshold:", self.flow_threshold, 12)
-        add_row("14. Min Cell Area (µm²):", self.min_area, 13)
-        add_row("15. Minimum Percentage of Image Occupied by Cells:", self.min_non_black_pixels_percentage, 14)
-        add_row("16. Segmentation Channel Intensity Threshold:", self.intensity_threshold, 15)
-        add_row("17. Minimum Percentage of Cell Area Occupied by Nucleus:", self.min_nucleus_pixels_percentage, 16)
-        add_row("18. Nucleus Channel Intensity Threshold:", self.nucleus_pixel_threshold, 17)
-        add_row("19. Pixel-to-Micron Ratio:", self.pixel_rate, 18)
+        # Add all nucleus rows
+        add_nucleus_row("Nucleus Channel File ID:", self.unique_nucleus_identifier)
+        add_nucleus_row("Lower Percentile of Pixel Intensities for Nucleus Channel:", self.nucleus_low_contrast_widget)
+        add_nucleus_row("Upper Percentile of Pixel Intensities for Nucleus Channel:", self.nucleus_high_contrast_widget)
+        add_nucleus_row("Minimum Percentage of Cell Area Occupied by Nucleus:", self.min_nucleus_pixels_percentage)
+        add_nucleus_row("Nucleus Channel Intensity Threshold:", self.nucleus_pixel_threshold)
 
-        # Adding the grid layout to the main layout
-        layout.addLayout(grid_layout)
+        self.nucleus_group_widget.setVisible(False)
+        self.nucleus_checkbox.toggled.connect(self.nucleus_group_widget.setVisible)
+        form_layout.addRow(self.nucleus_group_widget)  # 👈 Add the whole block as a form row
+
+        # Add remaining fields
+        add_row("Segmentation Channel Color:", self.main_marker_channel_dropdown)
+        add_row("Lower Percentile of Pixel Intensities for Segmentation Marker Channel:", self.main_marker_low_contrast_widget)
+        add_row("Upper Percentile of Pixel Intensities for Segmentation Marker Channel:", self.main_marker_high_contrast_widget)
+        add_row("Average Cell Diameter (µm):", self.diameter)
+        add_row("Flow Threshold:", self.flow_threshold)
+        add_row("Min Cell Area (µm²):", self.min_area)
+        add_row("Minimum Percentage of Image Occupied by Cells:", self.min_non_black_pixels_percentage)
+        add_row("Segmentation Channel Intensity Threshold:", self.intensity_threshold)
+        add_row("Pixel-to-Micron Ratio:", self.pixel_rate)
+
+        # Attach form layout to the main layout
+        layout.addLayout(form_layout)
+        layout.addStretch()
                 
         # Customizing the start button
         self.process_button = QPushButton("Process Images")
@@ -766,26 +929,7 @@ class ImageProcessingApp(QMainWindow):
             self.image_layout = self.create_images_tab()
 
         self.image_layout.addWidget(combined_container, alignment=Qt.AlignmentFlag.AlignTop)
-    
-    def toggle_help(self):
-        """
-        Show a large frameless help window, preserving min functionality
-        """
-        if self.help_text.isVisible():
-            self.help_text.setVisible(False)
-        else:
-            self.help_text.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint)
-            # Resize the window
-            self.help_text.resize(800, 500)  
-            self.help_text.setAlignment(Qt.AlignmentFlag.AlignLeft)
 
-            # Center the help window within the parent widget
-            parent_geometry = self.geometry()
-            help_x = parent_geometry.x() + (parent_geometry.width() - self.help_text.width()) // 2
-            help_y = parent_geometry.y() + (parent_geometry.height() - self.help_text.height()) // 2
-            self.help_text.move(help_x, help_y)
-            # Show the help window
-            self.help_text.show()
 
     def mousePressEvent(self, event):
         """
@@ -794,31 +938,7 @@ class ImageProcessingApp(QMainWindow):
         if self.help_text.isVisible():
             self.help_text.setVisible(False)
 
-    def get_help_text(self):
-        """
-        Return formatted help text
-        """
-        return (
-            "1. Images Folder Path: The path to the folder containing the images. Only single-channel images should be present in the folder. If multi-channel display images with the same file IDs are present, you may get no images processed notice.\n\n"  # Add extra newline
-            "2. Output File Name: Not a path, but the desired name for the output .csv file.\n\n"
-            "3. Condition: Additional column with the specified condition.\n\n"
-            "4. Replicate: Additional column with the replicate # specified.\n\n"
-            "5. Unique Actin File Identifier: A keyword unique to actin images (e.g., d2, ch1).\n\n"
-            "6. Unique Dapi File Identifier: A keyword unique to dapi images (e.g., d0, ch2).\n\n"
-            "7. Actin Channel Color: The color of the actin channel (choose from dropdown).\n\n"
-            "8. Lower Percentile for Segmentation Marker Channel: the lower percentile of pixel intensities for the segmentation marker image.Any intensity below this percentile is mapped to 0 (black). Contrast adjustments are there only for visualization purposes.Fluorescence intensity of original images is not modified, and all fluorescence data is extracted from raw images.\n\n"
-            "9. Upper Percentile for Segmentation Marker Channel: the upper percentile of pixel intensities for the segmentation marker image.Any intensity above this percentile is mapped to 1 (white).\n\n"
-            "10. Lower Percentile for Nucleus Channel: : the lower percentile of pixel intensities for the nucleus channel image.Any intensity below this percentile is mapped to 0 (black).\n\n"
-            "11. Upper Percentile for Nucleus Channel: the upper percentile of pixel intensities for the nucleus channel image.Any intensity above this percentile is mapped to 1 (white).\n\n"
-            "12. Average Cell Diameter: The typical cell diameter in microns.\n\n"
-            "13. Flow Threshold: the maximum allowed error of the flows for each mask. Increase this threshold if segmentation is not returning as many ROIs as you expect. Similarly, decrease this threshold if cellpose is returning too many incorrect masks.\n\n"
-            "14. Min Cell Area: The minimum area for a valid cell in microns.\n\n"
-            "15. Minimum Percentage of Image Occupied by Cells: Increase if empty images appear.\n\n"
-            "16. Actin Channel Intensity Threshold: Adjust to refine segmentation.\n\n"
-            "17. Minimum Percentage of Cell Area Occupied by Nucleus: Adjust for better segmentation.\n\n"
-            "18. Blue (DAPI) Pixel Threshold: Minimum fluorescence intensity for nucleus detection.\n\n"
-            "19. Pixel Conversion Rate: The conversion factor from pixels to microns, varies across microscopes. For EVOS: 20x: 0.354, 40x: 0.18, 60x: 0.12\n"
-        )
+    
     
     # Override function
     def closeEvent(self, event):
