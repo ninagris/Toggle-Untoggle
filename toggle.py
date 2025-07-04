@@ -1,7 +1,7 @@
 import numpy as np
 import cv2
-from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem
-from PyQt6.QtGui import QPixmap, QImage, QColor
+from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsTextItem
+from PyQt6.QtGui import QPixmap, QImage, QColor, QFont
 from PyQt6.QtCore import Qt
 
 class ClickableMask(QGraphicsPixmapItem):
@@ -37,7 +37,7 @@ class ClickableMask(QGraphicsPixmapItem):
         event.accept()
 
 class ImageViewer(QGraphicsView):
-    def __init__(self, pixmap, masks, colors=None):
+    def __init__(self, pixmap, masks, font_size, show_labels=False, colors=None):
         super().__init__()
 
         self.callback_dict = {} # Collect callback functions for each mask
@@ -62,25 +62,70 @@ class ImageViewer(QGraphicsView):
         # Generating a unique color for each mask
         num_masks = len(masks)
         colors = self.generate_colors(num_masks)
-        self.set_togglable_masks(masks, colors, pixmap)
+        self.set_togglable_masks(masks, colors, pixmap, font_size=font_size, show_labels=show_labels)
 
-    def set_togglable_masks(self, masks, colors, pixmap):
+    def set_togglable_masks(self, masks, colors, pixmap, font_size, show_labels=False):
         """
-        Making each masks a togglable object with assigned properties
+        Making each mask a togglable object with assigned properties, centered at its object centroid.
         """
+        image_width = pixmap.width()
+        image_height = pixmap.height()
+
+
         for i, mask_data in enumerate(masks):
-            label = mask_data["label"]  # Extract label
-            name = mask_data["image_name"] # Extract the name of the image that the mask has been derived from
-            mask = mask_data["mask"]  # Extract mask
-            color = colors[i] 
-            mask_pixmap = self.convert_mask_to_pixmap(mask, color) 
-            # Scale the mask to match the image size
-            mask_pixmap = mask_pixmap.scaled(pixmap.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-            # Make each mask clickable and put it on top of an image
-            mask_item = ClickableMask(mask_pixmap, name, label, click_callback=self.mask_click_callback)
-            mask_item.setZValue(1)  # Ensure masks are on top
+            label = mask_data["label"]
+            name = mask_data["image_name"]
+            mask = mask_data["mask"]  # 2D numpy binary mask
+            color = colors[i]
+
+            # Convert mask to pixmap and scale it to the image size
+            mask_pixmap = self.convert_mask_to_pixmap(mask, color)
+            scaled_pixmap = mask_pixmap.scaled(
+                pixmap.width(),
+                pixmap.height(),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
+
+            # Add the mask on top of the image at (0, 0)
+            mask_item = ClickableMask(scaled_pixmap, name, label, click_callback=self.mask_click_callback)
+            mask_item.setZValue(1)
+            mask_item.setPos(0, 0)
             self.scene.addItem(mask_item)
             self.mask_items.append(mask_item)
+
+            if show_labels:
+                y_coords, x_coords = np.nonzero(mask)
+                if len(x_coords) == 0 or len(y_coords) == 0:
+                    continue  # Skip empty masks
+
+                # Compute centroid in original mask coordinates
+                centroid_x = np.mean(x_coords)
+                centroid_y = np.mean(y_coords)
+
+                # Scale centroid to match the scaled pixmap
+                scale_x = scaled_pixmap.width() / mask.shape[1]
+                scale_y = scaled_pixmap.height() / mask.shape[0]
+                scaled_x = centroid_x * scale_x
+                scaled_y = centroid_y * scale_y
+                label_item = QGraphicsTextItem(str(label))
+                font = QFont("Arial", font_size if font_size is not None else 12)
+                font.setWeight(QFont.Weight.Bold)
+                label_item.setFont(font)
+                label_item.setDefaultTextColor(Qt.GlobalColor.white)
+                label_item.setZValue(100)
+
+                # Get the bounding rectangle of the text (width, height)
+                rect = label_item.boundingRect()
+
+                # Position the label so that its center aligns with (scaled_x, scaled_y)
+                label_item.setPos(scaled_x - rect.width() / 2, scaled_y - rect.height() / 2)
+
+                self.scene.addItem(label_item)
+
+
+
+
 
     # override method
     def resizeEvent(self, event):

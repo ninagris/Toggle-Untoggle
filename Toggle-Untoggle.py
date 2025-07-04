@@ -6,7 +6,7 @@ import torch
 import roifile
 import zipfile
 
-from PyQt6.QtWidgets import QApplication, QLabel, QPushButton, QFormLayout
+from PyQt6.QtWidgets import QApplication, QLabel, QPushButton, QFormLayout, QSpinBox
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QMainWindow
 from PyQt6.QtWidgets import QTabWidget, QLineEdit, QScrollArea, QComboBox
 from PyQt6.QtWidgets import QGridLayout, QSizePolicy, QStyleFactory, QTextEdit, QProgressBar, QSlider, QCheckBox
@@ -282,7 +282,7 @@ class ImageProcessingApp(QMainWindow):
                 """)
             self.stop_button.setFont(QFont("Arial", 25))
             self.stop_button.setMinimumSize(20, 20)
-            self.stop_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+            self.stop_button.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
             button_layout.addWidget(self.stop_button)
             button_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
             self.stop_button.clicked.connect(self.on_process_stop)
@@ -320,7 +320,7 @@ class ImageProcessingApp(QMainWindow):
         """
         self.images_tab = None  # Start without images tab
         self.image_layout = None  # This will hold image layout
-        main_layout = QHBoxLayout()  # Layout for aligning widgets to the left
+        main_layout = QVBoxLayout()  # Layout for aligning widgets to the left
         scroll_field = QScrollArea()
         scroll_field.setWidgetResizable(True) 
         scroll_field.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -365,7 +365,7 @@ class ImageProcessingApp(QMainWindow):
         # Creating a widget for a help button
         top_right_container = QWidget()
         top_right_layout = QVBoxLayout(top_right_container)
-        top_right_layout.setContentsMargins(0, 0, 10, 0)  
+        top_right_layout.setContentsMargins(0, 0, 0, 0)  
         top_right_layout.addStretch()  # Pushung button to the right
         top_right_layout.addWidget(self.help_button)
         layout.addWidget(top_right_container)
@@ -374,7 +374,8 @@ class ImageProcessingApp(QMainWindow):
 
         # Input Fields
         self.images_folder_path = QLineEdit("")
-        self.output_file = QLineEdit("single_cell_morphology")
+        self.csv_file_name = QLineEdit("single_cell_morphology")
+        self.roi_folder_name = QLineEdit("ROIs")
         self.condition_name = QLineEdit("")
         self.rep_num = QLineEdit("")
         self.unique_main_marker_identifier = QLineEdit("")
@@ -390,7 +391,7 @@ class ImageProcessingApp(QMainWindow):
 
         # Setting parameters for input fields
         for input_field in [
-            self.images_folder_path, self.output_file, self.condition_name, self.rep_num, 
+            self.images_folder_path, self.csv_file_name, self.roi_folder_name, self.condition_name, self.rep_num, 
             self.unique_main_marker_identifier, self.unique_nucleus_identifier, self.diameter, self.flow_threshold,
             self.min_area, self.min_non_black_pixels_percentage, self.intensity_threshold,
             self.min_nucleus_pixels_percentage, self.nucleus_pixel_threshold, self.pixel_rate,
@@ -473,24 +474,65 @@ class ImageProcessingApp(QMainWindow):
 
         # Add all rows here in order
         add_row("Images Folder Path:", self.images_folder_path)
-        add_row("Output File Name:", self.output_file)
+        add_row("Output File Name:", self.csv_file_name)
+        add_row("ROI Folder Name:", self.roi_folder_name)
         add_row("Condition Name:", self.condition_name)
         add_row("Replicate #:", self.rep_num)
         add_row("Segmentation Channel File ID:", self.unique_main_marker_identifier)
 
+
+        # Cell Labels Checkbox
+        checkbox_cell_labels = QLabel(f"{self.input_row_count}. Display cell labels")
+        checkbox_cell_labels.setFont(font_label)
+        self.cell_labels_checkbox = QCheckBox()
+        self.cell_labels_checkbox.setStyleSheet("QCheckBox::indicator { width: 25px; height: 25px; }")
+        self.cell_label_font_size_spinbox = QSpinBox()
+        self.cell_label_font_size_spinbox.setRange(12, 30)
+        self.cell_label_font_size_spinbox.setValue(18)  # default value
+        self.cell_label_font_size_spinbox.setSuffix(" pt")
+        self.cell_label_font_size_spinbox.setVisible(False)  # hidden by default
+        font_spinbox = QFont("Arial", 18)
+        self.cell_label_font_size_spinbox.setFont(font_spinbox)
+        self.cell_label_font_size_spinbox.setMinimumHeight(25) 
+        self.cell_label_font_size_spinbox.setMaximumHeight(40)   # Adjust height as needed
+
+        # Horizontal layout to place checkbox + font size spinbox in one row
+        cell_label_layout = QHBoxLayout()
+        cell_label_layout.addWidget(self.cell_labels_checkbox)
+        cell_label_layout.addWidget(self.cell_label_font_size_spinbox)
+        cell_label_layout.setSpacing(10)
+        cell_label_layout.setContentsMargins(0, 0, 0, 0)
+        cell_label_widget = QWidget()
+        cell_label_widget.setLayout(cell_label_layout)
+
+        # Add to the form layout
+        form_layout.addRow(checkbox_cell_labels, cell_label_widget)
+
+        # Toggle font size spinbox when checkbox is checked
+        self.cell_labels_checkbox.toggled.connect(self.cell_label_font_size_spinbox.setVisible)
+        self.input_row_count += 1
+                
         # Nucleus checkbox
         checkbox_label = QLabel(f"{self.input_row_count}. Nucleus channel present")
         checkbox_label.setFont(font_label)
         self.nucleus_checkbox = QCheckBox()
         self.nucleus_checkbox.setStyleSheet("QCheckBox::indicator { width: 25px; height: 25px; }")
-        form_layout.addRow(checkbox_label, self.nucleus_checkbox)
+
+        nucleus_checkbox_layout = QHBoxLayout()
+        nucleus_checkbox_layout.addWidget(self.nucleus_checkbox)
+        nucleus_checkbox_layout.setContentsMargins(0, 0, 0, 0)
+        nucleus_checkbox_layout.setSpacing(10)
+
+        nucleus_checkbox_widget = QWidget()
+        nucleus_checkbox_widget.setLayout(nucleus_checkbox_layout)
+
+        form_layout.addRow(checkbox_label, nucleus_checkbox_widget)
         self.input_row_count += 1
 
-        # Nucleus section
         self.nucleus_group_widget = QWidget()
         nucleus_layout = QFormLayout(self.nucleus_group_widget)
         nucleus_layout.setSpacing(10)
-        nucleus_layout.setContentsMargins(20, 0, 0, 0)
+        nucleus_layout.setContentsMargins(0, 0, 0, 0)
         nucleus_layout.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
         def add_nucleus_row(label_text, input_widget):
@@ -499,6 +541,7 @@ class ImageProcessingApp(QMainWindow):
             input_widget.setFont(font_input)
             input_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             nucleus_layout.addRow(label, input_widget)
+
 
         # Add all nucleus rows
         add_nucleus_row("Nucleus Channel File ID:", self.unique_nucleus_identifier)
@@ -524,7 +567,6 @@ class ImageProcessingApp(QMainWindow):
 
         # Attach form layout to the main layout
         layout.addLayout(form_layout)
-        layout.addStretch()
                 
         # Customizing the start button
         self.process_button = QPushButton("Process Images")
@@ -556,15 +598,17 @@ class ImageProcessingApp(QMainWindow):
         button_layout = QHBoxLayout()
         button_layout.addWidget(self.process_button)
         button_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        button_layout.setContentsMargins(5, 10, 0, 0)
+        button_layout.setContentsMargins(5, 15, 15, 0)
         layout.addLayout(button_layout)
+      
         processing_layout = QHBoxLayout()
         processing_layout.addWidget(self.processing_label)
     
         self.processing_label.setMinimumHeight(40)
         self.processing_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
-        processing_layout.setContentsMargins(5, 10, 0, 0)
+        processing_layout.setContentsMargins(5, 15, 15, 0)
         layout.addLayout(processing_layout)  # Add layout to main layout
+        layout.addStretch()
 
         # Progress bar settings
         self.processing_in_progress = False
@@ -750,7 +794,7 @@ class ImageProcessingApp(QMainWindow):
         """
         
         output_dir = self.images_folder_path.text()
-        output_csv = os.path.join(output_dir, self.output_file.text() + '.csv')
+        output_csv = os.path.join(output_dir, self.csv_file_name.text() + '.csv')
         correct_df.to_csv(output_csv, index=False)
 
         if not excluded_df.empty:
@@ -765,7 +809,7 @@ class ImageProcessingApp(QMainWindow):
         Parameters:
             correct_df (pd.DataFrame): DataFrame containing valid objects to convert into ROIs.
         """
-        roi_dir = os.path.join(self.images_folder_path.text(), "rois")
+        roi_dir = os.path.join(self.images_folder_path.text(), self.roi_folder_name.text())
         os.makedirs(roi_dir, exist_ok=True)
         image_masks_dict = {}
 
@@ -811,7 +855,8 @@ class ImageProcessingApp(QMainWindow):
     def start_processing(self):
         try:
             folder_path = self.images_folder_path.text()
-            output_file = self.output_file.text()
+            csv_file_name = self.csv_file_name.text()
+            roi_folder_name = self.roi_folder_name.text()
             condition_name = self.condition_name.text()
             rep_num = self.rep_num.text()
             main_marker_identifier = self.unique_main_marker_identifier.text()
@@ -843,11 +888,14 @@ class ImageProcessingApp(QMainWindow):
                     self.processing_in_progress = False
                     self.process_button.setEnabled(True)  # Re-enable the start button
 
+            nucleus_channel_present = self.nucleus_checkbox.isChecked()
+
             # Creating the worker to process images in the background
             self.worker = ImageProcessingWorker(self.images, folder_path, condition_name, rep_num, main_marker_identifier, nucleus_identifier, color, 
                                                 main_marker_contrast_low, main_marker_contrast_high, nucleus_contrast_low, nucleus_contrast_high, 
                                                 diam, flow_thresh, min_area, min_non_black_pixels_percentage, intensity_threshold, min_nucleus_pixels_percentage,
-                                            nucleus_pixel_threshold, pixel_conv_rate, output_file, self.progress_bar, self.model)
+                                            nucleus_pixel_threshold, pixel_conv_rate, csv_file_name, roi_folder_name, 
+                                            self.progress_bar, self.model, nucleus_channel_present=nucleus_channel_present)
 
             # Connecting the worker's signal to the slot to update the UI
             self.worker.status_update.connect(self.update_status_label)
@@ -893,8 +941,8 @@ class ImageProcessingApp(QMainWindow):
         label_rgb.setScaledContents(True)
         label_overlay.setScaledContents(True)
         label_gray.setScaledContents(True)
-        scaled_width = 450 # Target width for each image
-        scaled_height = 550  # Target height for each image
+        scaled_width = 430 # Target width for each image
+        scaled_height = 530  # Target height for each image
         
         # Scale all images consistently
         scaled_pixmap_gray = pixmap_gray.scaled(scaled_width, scaled_height, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
@@ -905,9 +953,10 @@ class ImageProcessingApp(QMainWindow):
         label_overlay.setPixmap(scaled_pixmap_overlay)
         label_gray.setPixmap(scaled_pixmap_gray)
 
-        
+        show_labels = self.cell_labels_checkbox.isChecked()
+        font_size = self.cell_label_font_size_spinbox.value()
         # Using the scaled gray image in ImageViewer
-        gray_viewer = ImageViewer(scaled_pixmap_gray, masks_list)
+        gray_viewer = ImageViewer(scaled_pixmap_gray, masks_list, font_size, show_labels)
 
 
         layout.addWidget(label_rgb)
@@ -960,7 +1009,8 @@ class ImageProcessingWorker(QThread):
 
     def __init__(self, images, folder_path, condition_name, rep_num, main_marker_identifier, nucleus_identifier,  color,  main_marker_contrast_low,
                  main_marker_contrast_high, nucleus_contrast_low, nucleus_contrast_high,  diam, thresh, min_area, min_non_black_pixels_percentage,
-                 intensity_threshold, min_nucleus_pixels_percentage, nucleus_pixel_threshold, pixel_conv_rate, output_file, progress_bar, model):
+                 intensity_threshold, min_nucleus_pixels_percentage, nucleus_pixel_threshold, pixel_conv_rate, csv_file_name, roi_folder_name, progress_bar, model,
+                 nucleus_channel_present=True):
         super().__init__()
         self.folder_path = folder_path
         self.images = images
@@ -981,11 +1031,13 @@ class ImageProcessingWorker(QThread):
         self.min_nucleus_pixels_percentage = min_nucleus_pixels_percentage
         self.nucleus_pixel_threshold = nucleus_pixel_threshold
         self.pixel_conv_rate = pixel_conv_rate
-        self.output_file = output_file
+        self.csv_file_name = csv_file_name
+        self.roi_folder_name = roi_folder_name
         self.active = True
         self.count = 0  # Initialize count for processed images
         self.progress_bar = progress_bar
         self.model = model
+        self.nucleus_channel_present = nucleus_channel_present
 
     def stop(self):
         self.active = False
@@ -1053,27 +1105,43 @@ class ImageProcessingWorker(QThread):
                 if not hasattr(self, "image_shape"):
                     image_array = np.array (Image.open(main_marker_image_path))
                     self.image_shape = image_array.shape
-                nucleus_name = name.replace(self.main_marker_identifier, self.nucleus_identifier)
+                if self.nucleus_channel_present:
+                    nucleus_name = name.replace(self.main_marker_identifier, self.nucleus_identifier)
+                    if (nucleus_name not in self.images or self.nucleus_identifier=="") and (self.active):  # Prevent KeyError
+                        self.status_update.emit(f"Missing nucleus image: {nucleus_name}")
+                        self.finished_processing.emit()
+                        return
+                    
+                    nucleus_image_path = self.images[nucleus_name]
+ 
 
-                if (nucleus_name not in self.images or self.nucleus_identifier=="") and (self.active):  # Prevent KeyError
-                    self.status_update.emit(f"Missing nucleus image: {nucleus_name}")
-                    self.finished_processing.emit()
-                    return
-                
-                nucleus_image_path = self.images[nucleus_name]
+               
+               
 
                 if self.active:
                     try:
                         # Processing images
                         if not self.active:
                             break
-                        main_marker_image, nucleus_image, diamet, marker_channel_color, rgb = image_preprocessing(main_marker_image_path, nucleus_image_path,
-                                                                                                    main_marker_channel = self.color,
-                                                                                                    main_marker_contrast_high = self.main_marker_contrast_high,main_marker_contrast_low = self.main_marker_contrast_low,
-                                                                                                    nucleus_contrast_low = self.nucleus_contrast_low, nucleus_contrast_high = self.nucleus_contrast_high, # image of the channel that will be used for segmentation purposes (red/actin channel used here)
-                                                                                                    min_non_black_pixels_percentage = self.min_non_black_pixels_percentage,
-                                                                                                    intensity_threshold=self.intensity_threshold,  pixel_conv_rate=self.pixel_conv_rate,
-                                                                                                    diam = self.diam)
+                        if self.nucleus_channel_present:
+                            main_marker_image, nucleus_image, diamet, marker_channel_color, rgb = image_preprocessing(main_marker_image_path, nucleus_image_path=nucleus_image_path if self.nucleus_channel_present else None,
+                                                                                                        main_marker_channel = self.color,
+                                                                                                        main_marker_contrast_high = self.main_marker_contrast_high,main_marker_contrast_low = self.main_marker_contrast_low,
+                                                                                                        nucleus_contrast_low = self.nucleus_contrast_low, nucleus_contrast_high = self.nucleus_contrast_high, # image of the channel that will be used for segmentation purposes (red/actin channel used here)
+                                                                                                        min_non_black_pixels_percentage = self.min_non_black_pixels_percentage,
+                                                                                                        intensity_threshold=self.intensity_threshold,  pixel_conv_rate=self.pixel_conv_rate,
+                                                                                                        diam = self.diam,
+                                                                                                        nucleus_channel_present=self.nucleus_channel_present)
+                        else:
+                            main_marker_image, diamet, marker_channel_color, rgb = image_preprocessing(main_marker_image_path, nucleus_image_path=nucleus_image_path if self.nucleus_channel_present else None,
+                                                                                                        main_marker_channel = self.color,
+                                                                                                        main_marker_contrast_high = self.main_marker_contrast_high,main_marker_contrast_low = self.main_marker_contrast_low,
+                                                                                                        nucleus_contrast_low = self.nucleus_contrast_low, nucleus_contrast_high = self.nucleus_contrast_high, # image of the channel that will be used for segmentation purposes (red/actin channel used here)
+                                                                                                        min_non_black_pixels_percentage = self.min_non_black_pixels_percentage,
+                                                                                                        intensity_threshold=self.intensity_threshold,  pixel_conv_rate=self.pixel_conv_rate,
+                                                                                                        diam = self.diam,
+                                                                                                        nucleus_channel_present=self.nucleus_channel_present)
+
                         if not self.active:
                             break
                        
@@ -1081,12 +1149,14 @@ class ImageProcessingWorker(QThread):
 
                         if not self.active:
                             break
-                        df, overlay_image, gray_image, masks_list = analyze_segmented_cells(predicted_masks, main_marker_image, main_marker_image_name,
-                                                                                        nucleus_image, min_nucleus_pixels_percentage = self.min_nucleus_pixels_percentage,
-                                                                                        nucleus_pixel_threshold=self.nucleus_pixel_threshold, 
+                        df, overlay_image, gray_image, masks_list = analyze_segmented_cells(predicted_masks, main_marker_image, main_marker_image_name, 
                                                                                         pixel_conv_rate=self.pixel_conv_rate,
                                                                                         rgb_image = rgb, min_area = self.min_area,
-                                                                                        condition_name= self.condition_name, replicate_num = self.rep_num)
+                                                                                        condition_name= self.condition_name, replicate_num = self.rep_num,
+                                                                                        nucleus_image=nucleus_image if self.nucleus_channel_present else None,
+                                                                                        min_nucleus_pixels_percentage=self.min_nucleus_pixels_percentage if self.nucleus_channel_present else None,
+                                                                                        nucleus_pixel_threshold=self.nucleus_pixel_threshold if self.nucleus_channel_present else None,
+                                                                                        nucleus_channel_present=self.nucleus_channel_present)
 
                         if not self.active:
                             break

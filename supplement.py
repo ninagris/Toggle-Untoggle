@@ -11,11 +11,10 @@ from skimage.segmentation import find_boundaries
 from skimage.morphology import dilation, disk
 
 warnings.filterwarnings("ignore")
-
 def delete_dot_underscore_files(directory):
     for root, dirs, files in os.walk(directory):
         for file in files:
-            if file.startswith("._"):
+            if file.startswith("."):
                 os.remove(os.path.join(root, file))
                 print(f"Deleted: {os.path.join(root, file)}")
 
@@ -58,7 +57,7 @@ def pixel_conversion(big_df, pixel_rate):
     return big_df
 
 def image_preprocessing(main_marker_image_path, # image of the channel that will be used for segmentation purposes (red/actin channel used here)
-    nucleus_image_path, # image with the nuclei of the cells (blue/dapi channel)
+    nucleus_image_path = None, # image with the nuclei of the cells (blue/dapi channel)
     main_marker_channel = 'red', # can also be green
     main_marker_contrast_low = 15,
     main_marker_contrast_high = 99,
@@ -67,18 +66,17 @@ def image_preprocessing(main_marker_image_path, # image of the channel that will
     min_non_black_pixels_percentage= 5,  # minimum percentage of the total image area to indicate the presence of objects
     intensity_threshold=62.0, # min intensity that considers pixel to be non-background
     pixel_conv_rate = 0.18,
-    diam = 22):
+    diam = 22,
+    nucleus_channel_present=True):
     """
     Opening image and cleaning it up prior to segmentation
     """
     # Open the image file using PIL and convert it to an array
     main_marker_opened = Image.open(main_marker_image_path)
     main_marker_image = np.array(main_marker_opened)
-    nucleus_opened = Image.open(nucleus_image_path)
-    nucleus_image = np.array(nucleus_opened)
+    
     # Increasing the contrast of the separate channel images
-    main_marker_im = increase_contrast_stretch(main_marker_image, main_marker_contrast_low, main_marker_contrast_high) 
-    nucleus_im = increase_contrast_stretch(nucleus_image, nucleus_contrast_low, nucleus_contrast_high)
+    main_marker_im = increase_contrast_stretch(main_marker_image, main_marker_contrast_low, main_marker_contrast_high)
     height, width = main_marker_im.shape
     rgb_image = np.zeros((height, width, 3))
     total_image_area = height * width
@@ -94,26 +92,30 @@ def image_preprocessing(main_marker_image_path, # image of the channel that will
     elif main_marker_channel=='green':
         marker_channel = 1
     
-    rgb_image[..., 2] = nucleus_im  # Blue channel for the nucleus
     rgb_image[..., marker_channel] = main_marker_im # Red channel for segmentation marker
     diam_pixels = diam / pixel_conv_rate # Converting microns specified by the user in pixels
 
-    return main_marker_image, nucleus_image, diam_pixels, marker_channel, rgb_image
-
+    if nucleus_channel_present:
+        nucleus_opened = Image.open(nucleus_image_path)
+        nucleus_image = np.array(nucleus_opened) 
+        nucleus_im = increase_contrast_stretch(nucleus_image, nucleus_contrast_low, nucleus_contrast_high)
+        rgb_image[..., 2] = nucleus_im  # Blue channel for the nucleus
+        return main_marker_image, nucleus_image, diam_pixels, marker_channel, rgb_image
+    else:
+        return main_marker_image, diam_pixels, marker_channel, rgb_image
 
 def analyze_segmented_cells(predicted_masks,
                          main_marker_image,
                          main_marker_image_name,
-                         nucleus_image,
-                         min_nucleus_pixels_percentage,
-                         nucleus_pixel_threshold,
                          min_area,
                          pixel_conv_rate,
                          rgb_image,
                          condition_name,
                          replicate_num,
-                         third_marker = None,
-                         fourth_marker=None,
+                         nucleus_image=None,
+                         min_nucleus_pixels_percentage=None,
+                         nucleus_pixel_threshold=None,
+                         nucleus_channel_present=True,
                          properties = ['label', 'area', 'bbox_area', 'area_convex', 'perimeter', 'eccentricity', 'extent', 'major_axis_length', 
                         'minor_axis_length', 'centroid', 'mean_intensity', 'max_intensity', 'min_intensity',
                         'equivalent_diameter_area', 'feret_diameter_max' ,'orientation','perimeter_crofton','solidity']):
@@ -127,27 +129,28 @@ def analyze_segmented_cells(predicted_masks,
     valid_regions = []
     mask_list = []  # List that is eventually populated with dictionaries for individual objects
     new_label_counter = 1 # to make sure mask labeling starts with 1 after filtering
-    for region in measure.regionprops(cleared_mask, intensity_image=main_marker_image): # Calculating properties for the masks of cells
-        region_mask = (cleared_mask == region.label) # Obtaining the mask of the individual regions
-        """ Checking for the presence of nucleus inside the cell"""
+
+    for region in measure.regionprops(cleared_mask, intensity_image=main_marker_image):
+        region_mask = (cleared_mask == region.label)
         region_area = region.area
-        min_required_nucleus_pixels = (min_nucleus_pixels_percentage / 100) * region_area # Converting the % into pixel number
-        nucleus_pixels = nucleus_image[region_mask] 
-        region_nucleus_pixels = np.sum(nucleus_pixels >= nucleus_pixel_threshold)
-                
-        if region_nucleus_pixels >= min_required_nucleus_pixels and region_area > (min_area/pixel_conv_rate**2):
-            props = {prop: getattr(region, prop) for prop in properties} 
+        valid = region_area > (min_area / pixel_conv_rate**2)
+
+        if nucleus_channel_present:
+            min_required_nucleus_pixels = (min_nucleus_pixels_percentage / 100) * region_area
+            nucleus_pixels = nucleus_image[region_mask]
+            region_nucleus_pixels = np.sum(nucleus_pixels >= nucleus_pixel_threshold)
+            valid = valid and (region_nucleus_pixels >= min_required_nucleus_pixels)
+
+        if valid:
+            props = {prop: getattr(region, prop) for prop in properties}
             valid_props.append(props)
             valid_regions.append(region)
-        
-            # Appending dictionary with the info for the cell to the list for the whole image
             mask_list.append({
                 "image_name": main_marker_image_name,
                 "label": new_label_counter,
                 "mask": region_mask
             })
-
-            new_label_counter += 1  # Increment for next valid object
+            new_label_counter += 1
     
     # Generating grayscale image for further mask overlay
     rgb_image_copy = rgb_image.copy()
