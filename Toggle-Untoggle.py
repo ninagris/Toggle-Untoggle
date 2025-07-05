@@ -1076,6 +1076,14 @@ class ImageProcessingWorker(QThread):
             self.finished_processing.emit() 
             return
         
+        if self.pixel_conv_rate > 2:
+            self.status_update.emit("Invalid pixel-to-micron conversion rate!")
+            self.finished_processing.emit() 
+            return
+        
+        
+
+        
         # Ensuring 'self.images' is defined and contains the expected data
         if not hasattr(self, 'images') or not self.images:
             self.status_update.emit("No images loaded into the system!")
