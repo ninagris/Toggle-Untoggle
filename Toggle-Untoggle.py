@@ -6,9 +6,9 @@ import torch
 import roifile
 import zipfile
 
-from PyQt6.QtWidgets import QApplication, QLabel, QPushButton, QFormLayout, QSpinBox
+from PyQt6.QtWidgets import QApplication, QLabel, QPushButton, QFormLayout, QSpinBox, QFileDialog
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QMainWindow
-from PyQt6.QtWidgets import QTabWidget, QLineEdit, QScrollArea, QComboBox
+from PyQt6.QtWidgets import QTabWidget, QLineEdit, QScrollArea, QComboBox, QMessageBox
 from PyQt6.QtWidgets import QGridLayout, QSizePolicy, QStyleFactory, QTextEdit, QProgressBar, QSlider, QCheckBox
 from PyQt6.QtGui import QPixmap, QImage, QFont, QIcon
 from PyQt6.QtCore import Qt, pyqtSignal, QThread, QTimer, QPoint
@@ -19,6 +19,131 @@ from PIL import Image
 
 from supplement import open_folder, image_preprocessing, analyze_segmented_cells, convert_to_pixmap, normalize_to_uint8, pixel_conversion
 from toggle import ImageViewer
+
+class ModelSelectorWidget(QWidget):
+    model_changed = pyqtSignal(str, str)  # emits (model_type, custom_model_path)
+
+    def __init__(self, font):
+        super().__init__()
+
+        self.model_type = "cyto3"
+        self.custom_model_path = None
+        self.setMinimumHeight(25)  # Match QLineEdit height
+        self.setMaximumHeight(40)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+
+        # Dropdown menu
+        self.model_dropdown = QComboBox()
+        self.model_dropdown.addItems(["cyto3", "nuclei", "custom model"])
+        self.model_dropdown.setCurrentText("cyto3")
+        self.model_dropdown.setFont(font)
+        self.model_dropdown.setMinimumHeight(25)
+        self.model_dropdown.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.model_dropdown.setStyleSheet("""
+            QComboBox {
+                border: 1px solid gray;
+                border-radius: 1px;
+                padding: 1px 20px 1px 3px;  /* Adjust padding to make room for wider arrow */
+                min-width: 6em;
+                background-color: white;
+                selection-color:black;
+                selection-background-color: lightblue;
+            }
+            QComboBox:!editable, QComboBox::drop-down:editable {
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                            stop: 0 #FFFFFF, stop: 0.4 #FFFFFF,
+                                            stop: 0.5 ##FFFFFF, stop: 1.0 #FFFFFF);
+            }
+            /* When popup is open */
+            QComboBox:!editable:on, QComboBox::drop-down:editable:on {
+                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                            stop: 0 #FFFFFF, stop: 0.4 #FFFFFF,
+                                            stop: 0.5 #FFFFFF, stop: 1.0 #FFFFFF);
+            }                                          
+            /* Arrow inside dropdown */
+            QComboBox::down-arrow {
+                image: url(:/black_arrow.png);  /* Path to your arrow icon */
+                width: 20px;  /* Set arrow width to 20px */
+                height: 20px;  /* Optionally adjust arrow height */
+            }
+        """)
+        self.model_dropdown.currentTextChanged.connect(self.on_model_selection_changed)
+        dropdown_view = self.model_dropdown.view()
+        dropdown_view.setMinimumWidth(50)
+        dropdown_view.setMinimumHeight(30)
+        dropdown_view.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+
+
+
+        # Custom model path input
+        self.custom_model_input = QLineEdit()
+        self.custom_model_input.setPlaceholderText("Path to custom cellpose model")
+        self.custom_model_input.setFont(font)
+
+        self.browse_button = QPushButton("Browse")
+        self.browse_button.setFont(font)
+        self.browse_button.setMaximumSize(70, 40)
+        self.browse_button.clicked.connect(self.browse_custom_model)
+
+        # Custom model input layout
+        self.custom_model_container = QWidget()
+        custom_layout = QHBoxLayout(self.custom_model_container)
+        custom_layout.setContentsMargins(0, 0, 0, 0)
+        custom_layout.setSpacing(5)
+        custom_layout.addWidget(self.custom_model_input)
+        custom_layout.addWidget(self.browse_button)
+        self.custom_model_container.setVisible(False)
+
+        layout = QHBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+        layout.addWidget(self.model_dropdown)
+        layout.addWidget(self.custom_model_container)
+        layout.setStretch(0, 1)  # dropdown gets 1 part
+        layout.setStretch(1, 3)  # input gets 3 parts
+        self.setLayout(layout)
+
+        self.model_dropdown.currentTextChanged.connect(self.on_model_selection_changed)
+
+
+
+    def on_model_selection_changed(self, selected_text):
+        is_custom = selected_text == "custom model"
+
+        # Show/hide the input field and enable/disable browse
+        self.custom_model_container.setVisible(is_custom)
+        self.custom_model_input.setEnabled(is_custom)
+        self.browse_button.setEnabled(is_custom)
+
+        # 🧼 Clear custom model path when switching away from "custom model"
+        if not is_custom:
+            self.custom_model_input.setText("")
+
+        self.emit_model_change()
+
+
+    def browse_custom_model(self):
+        file_dialog = QFileDialog(self, "Select Custom Model")
+        file_dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
+        if file_dialog.exec():
+            selected_files = file_dialog.selectedFiles()
+            if selected_files:
+                self.custom_model_input.setText(selected_files[0])
+                self.emit_model_change()
+
+    def emit_model_change(self):
+        if self.model_dropdown.currentText() == "custom model":
+            model_type = ""
+            custom_path = self.custom_model_input.text()
+        else:
+            model_type = self.model_dropdown.currentText()
+            custom_path = ""
+
+        self.model_type = model_type
+        self.custom_model_path = custom_path
+        # You can emit the signal if needed by others, but do not connect it to model loading
+        self.model_changed.emit(model_type or "", custom_path or "")
 
 class DraggableTextEdit(QTextEdit):
     def __init__(self, parent=None):
@@ -73,7 +198,7 @@ class DraggableTextEdit(QTextEdit):
 class ImageProcessingApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.model = models.Cellpose(gpu=True, model_type='cyto3')
+        self.model = models.CellposeModel(gpu=True, model_type='cyto3')
         self.model.device = torch.device("mps")  # Force MPS usage (for mac gpu use)
 
         self.setWindowTitle("Toggle-Untoggle")
@@ -130,6 +255,45 @@ class ImageProcessingApp(QMainWindow):
         self.help_text.setFont(font)
         self.help_text.setReadOnly(True)
         self.help_text.setVisible(False) 
+    
+    def handle_model_selection(self, model_type: str, custom_path: str):
+        print(f"[MODEL] Attempting to load: model_type='{model_type}', custom_path='{custom_path}'")
+
+        # Always clear the current model first
+        self.model = None
+
+        try:
+            if model_type == "" and not custom_path.strip():
+                print("[MODEL] Empty custom path for custom model — blocking.")
+                raise ValueError("Please input a valid path to the custom model.")
+
+            if custom_path:
+                if not os.path.exists(custom_path):
+                    print(f"[MODEL] Custom model path doesn't exist: {custom_path}")
+                    raise ValueError("Custom model path does not exist.")
+                print(f"[MODEL] Loading custom model from: {custom_path}")
+                self.model = models.CellposeModel(gpu=True, pretrained_model=custom_path)
+
+            elif model_type in ["cyto", "cyto2", "cyto3", "nuclei"]:
+                print(f"[MODEL] Loading built-in model type: {model_type}")
+                self.model = models.CellposeModel(gpu=True, model_type=model_type)
+
+            else:
+                raise ValueError("Invalid model type selection.")
+
+            self.model.device = torch.device("mps")
+            print(f"[MODEL] Model loaded successfully on {self.model.device}")
+
+        except Exception as e:
+            self.model = None  # ← extra safety
+            print(f"[MODEL] Model loading failed: {e}")
+            raise
+
+
+
+
+
+
     
     def create_slider(self, default_value, font_input):
         """
@@ -289,11 +453,35 @@ class ImageProcessingApp(QMainWindow):
             self.process_button.setEnabled(False)
 
     def on_process_clicked(self, button_layout):
-        """
-        Start image processing once the start button is clicked
-        """
-        if self.processing_in_progress:  
-            return  # Preventing multiple app starts if it is already running
+        if self.processing_in_progress:
+            return
+
+        # model_type = self.model_selector_widget.model_type
+        # custom_path = self.model_selector_widget.custom_model_path or ""
+        # print(f"[CLICKED] User selected model_type={model_type}, custom_path={custom_path}")
+
+        try:
+            # Get the current values live from the widget
+            current_model_text = self.model_selector_widget.model_dropdown.currentText()
+
+            if current_model_text == "custom model":
+                model_type = ""
+                custom_path = self.model_selector_widget.custom_model_input.text().strip()
+            else:
+                model_type = current_model_text
+                custom_path = ""
+
+            self.handle_model_selection(model_type, custom_path)
+
+            if self.model is None:
+                raise ValueError("No valid model loaded. Check your selection.")
+
+        except Exception as e:
+            self.update_status_label(f"Model loading error: {str(e)}")
+            self.processing_in_progress = False
+            self.process_button.setEnabled(True)
+            return
+
         self.processing_in_progress = True
         self.processing_label.setText("Processing started...")
         self.process_button.setEnabled(False)
@@ -370,7 +558,9 @@ class ImageProcessingApp(QMainWindow):
         top_right_layout.addWidget(self.help_button)
         layout.addWidget(top_right_container)
         layout.setAlignment(top_right_container, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
-    
+
+        self.model_selector_widget = ModelSelectorWidget(font_input)
+
 
         # Input Fields
         self.images_folder_path = QLineEdit("")
@@ -467,7 +657,10 @@ class ImageProcessingApp(QMainWindow):
 
             label = QLabel(numbered_label)
             label.setFont(font_label)
-            input_widget.setFont(font_input)
+            label.setMinimumHeight(25)
+            label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+
+            input_widget.setMinimumHeight(25)
             input_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
             form_layout.addRow(label, input_widget)
@@ -476,6 +669,7 @@ class ImageProcessingApp(QMainWindow):
         add_row("Images Folder Path:", self.images_folder_path)
         add_row("Output File Name:", self.csv_file_name)
         add_row("ROI Folder Name:", self.roi_folder_name)
+        add_row("Cellpose Model:", self.model_selector_widget)
         add_row("Condition Name:", self.condition_name)
         add_row("Replicate #:", self.rep_num)
         add_row("Segmentation Channel File ID:", self.unique_main_marker_identifier)
@@ -487,7 +681,7 @@ class ImageProcessingApp(QMainWindow):
         self.cell_labels_checkbox = QCheckBox()
         self.cell_labels_checkbox.setStyleSheet("QCheckBox::indicator { width: 25px; height: 25px; }")
         self.cell_label_font_size_spinbox = QSpinBox()
-        self.cell_label_font_size_spinbox.setRange(12, 30)
+        self.cell_label_font_size_spinbox.setRange(5, 30)
         self.cell_label_font_size_spinbox.setValue(18)  # default value
         self.cell_label_font_size_spinbox.setSuffix(" pt")
         self.cell_label_font_size_spinbox.setVisible(False)  # hidden by default
@@ -500,7 +694,7 @@ class ImageProcessingApp(QMainWindow):
         cell_label_layout = QHBoxLayout()
         cell_label_layout.addWidget(self.cell_labels_checkbox)
         cell_label_layout.addWidget(self.cell_label_font_size_spinbox)
-        cell_label_layout.setSpacing(10)
+        # cell_label_layout.setSpacing(10)
         cell_label_layout.setContentsMargins(0, 0, 0, 0)
         cell_label_widget = QWidget()
         cell_label_widget.setLayout(cell_label_layout)
@@ -538,7 +732,10 @@ class ImageProcessingApp(QMainWindow):
         def add_nucleus_row(label_text, input_widget):
             label = QLabel(label_text)
             label.setFont(font_label)
+            label.setMinimumHeight(25)
+            label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
             input_widget.setFont(font_input)
+            input_widget.setMinimumHeight(25)
             input_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             nucleus_layout.addRow(label, input_widget)
 
@@ -1049,6 +1246,8 @@ class ImageProcessingWorker(QThread):
         if not self.active:  # Stop processing if active flag is false
             return
         
+
+        
         # Checking if the folder path is empty or invalid
         if not self.folder_path or not os.path.isdir(self.folder_path):
             self.status_update.emit("Invalid folder path!")
@@ -1153,7 +1352,7 @@ class ImageProcessingWorker(QThread):
                         if not self.active:
                             break
                        
-                        predicted_masks, _, _, _ = self.model.eval(main_marker_image, diameter=diamet, flow_threshold = self.thresh,  channels=[0, marker_channel_color])
+                        predicted_masks, _, _ = self.model.eval(main_marker_image, diameter=diamet, flow_threshold = self.thresh,  channels=[0, marker_channel_color])
 
                         if not self.active:
                             break
