@@ -74,7 +74,7 @@ class ModelSelectorWidget(QWidget):
         dropdown_view.setMinimumHeight(30)
         dropdown_view.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
 
-
+       
 
         # Custom model path input
         self.custom_model_input = QLineEdit()
@@ -242,7 +242,8 @@ class ImageProcessingApp(QMainWindow):
         self.github_link.setStyleSheet("padding-right: 15px;")
         self.tabs.setCornerWidget(self.github_link, Qt.Corner.TopRightCorner) # Adding the link to the top right corner of the tab bar
 
-        
+
+
         # Customizing Tab for the input parameters
         self.input_tab = QWidget()
         self.create_input_form()
@@ -255,6 +256,23 @@ class ImageProcessingApp(QMainWindow):
         self.help_text.setFont(font)
         self.help_text.setReadOnly(True)
         self.help_text.setVisible(False) 
+    def update_modes(self):
+        sender = self.sender()
+        if sender == self.toggle_checkbox and sender.isChecked():
+            self.correction_checkbox.setChecked(False)
+            mode = "toggle"
+        elif sender == self.correction_checkbox and sender.isChecked():
+            self.toggle_checkbox.setChecked(False)
+            mode = "correction"
+        else:
+            mode = None
+
+        if mode:
+            for viewer in self.gray_viewers:
+                viewer.set_mode(mode)
+            print(f"Switched all to {mode} mode")
+
+
     
     def handle_model_selection(self, model_type: str, custom_path: str):
         print(f"[MODEL] Attempting to load: model_type='{model_type}', custom_path='{custom_path}'")
@@ -563,12 +581,12 @@ class ImageProcessingApp(QMainWindow):
 
 
         # Input Fields
-        self.images_folder_path = QLineEdit("")
+        self.images_folder_path = QLineEdit("/Users/ninagrishencko/Desktop/test_img")
         self.csv_file_name = QLineEdit("single_cell_morphology")
         self.roi_folder_name = QLineEdit("ROIs")
-        self.condition_name = QLineEdit("")
-        self.rep_num = QLineEdit("")
-        self.unique_main_marker_identifier = QLineEdit("")
+        self.condition_name = QLineEdit("r")
+        self.rep_num = QLineEdit("r")
+        self.unique_main_marker_identifier = QLineEdit("d2")
         self.unique_nucleus_identifier = QLineEdit("")
         self.diameter = QLineEdit("20")
         self.flow_threshold = QLineEdit("0.4")
@@ -577,7 +595,7 @@ class ImageProcessingApp(QMainWindow):
         self.intensity_threshold = QLineEdit("70")
         self.min_nucleus_pixels_percentage = QLineEdit("10")
         self.nucleus_pixel_threshold = QLineEdit("200")
-        self.pixel_rate = QLineEdit("") 
+        self.pixel_rate = QLineEdit("0.18") 
 
         # Setting parameters for input fields
         for input_field in [
@@ -855,6 +873,7 @@ class ImageProcessingApp(QMainWindow):
         self.tabs.addTab(images_tab, "Processed Images")  # Add the new tab to the widget
         layout = QVBoxLayout()
 
+        # self.setLayout(layout)
         # Scrollable area for images
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
@@ -864,7 +883,6 @@ class ImageProcessingApp(QMainWindow):
         scroll_area.setWidget(image_container)
         image_container.setStyleSheet("background-color: white;")  
        
-        # Checkboxes
         self.single_cell_checkbox = QCheckBox("Single-cell morphology")
         self.roi_checkbox = QCheckBox("ROIs")
         
@@ -919,16 +937,52 @@ class ImageProcessingApp(QMainWindow):
         button_layout.setSpacing(5)
         button_layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
         self.save_button.clicked.connect(self.collect_all_callbacks)
+         # --- Add toggle/correction checkboxes to a row ---
+        checkbox_row = QHBoxLayout()
+        checkbox_row.setAlignment(Qt.AlignmentFlag.AlignRight)  # Align content inside the row to the right
+
+        self.toggle_checkbox = QCheckBox("Toggle Mode")
+        self.correction_checkbox = QCheckBox("Correction Mode")
+        self.toggle_checkbox.setChecked(True)
+
+        # Styling (optional)
+        self.toggle_checkbox.setStyleSheet("""
+            QCheckBox { font-size: 18pt; padding: 5px; }
+            QCheckBox::indicator { width: 25px; height: 25px; }
+        """)
+        self.correction_checkbox.setStyleSheet("""
+            QCheckBox { font-size: 18pt; padding: 5px; }
+            QCheckBox::indicator { width: 25px; height: 25px; }
+        """)
+
+        self.toggle_checkbox.stateChanged.connect(self.update_modes)
+        self.correction_checkbox.stateChanged.connect(self.update_modes)
+
+        checkbox_row.addWidget(self.toggle_checkbox)
+        checkbox_row.addWidget(self.correction_checkbox)
+
+        # ✅ Wrap row in a widget to control alignment inside main layout
+        checkbox_container = QWidget()
+        checkbox_container.setLayout(checkbox_row)
+        layout.addWidget(checkbox_container, alignment=Qt.AlignmentFlag.AlignRight)
+        layout.addLayout(checkbox_row)
         layout.addWidget(scroll_area)
         layout.addWidget(self.progress_bar)  # Adding progress bar below the scroll area
+     
         images_tab.setLayout(layout)
+
 
         # Ensuring the layout is cleared before returning it
         self.clear_layout(image_layout)
+      
+
+        # Checkboxes
         self.images_tab = images_tab  # Updating the reference to the new tab
+        
         self.image_layout = image_layout 
 
         return image_layout 
+
 
     def collect_all_callbacks(self):
         """
@@ -1153,15 +1207,16 @@ class ImageProcessingApp(QMainWindow):
         show_labels = self.cell_labels_checkbox.isChecked()
         font_size = self.cell_label_font_size_spinbox.value()
         # Using the scaled gray image in ImageViewer
-        gray_viewer = ImageViewer(scaled_pixmap_gray, masks_list, font_size, show_labels)
+        self.gray_viewer = ImageViewer(scaled_pixmap_gray, masks_list, font_size, show_labels)
+
 
 
         layout.addWidget(label_rgb)
         layout.addWidget(label_overlay)
-        layout.addWidget(gray_viewer)
+        layout.addWidget(self.gray_viewer)
         container.setLayout(layout)
 
-        self.gray_viewers.append(gray_viewer)
+        self.gray_viewers.append(self.gray_viewer)
 
         # Creating a combined container for the title and image container
         combined_container = QWidget()
