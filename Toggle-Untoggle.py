@@ -8,10 +8,10 @@ import zipfile
 
 from PyQt6.QtWidgets import QApplication, QLabel, QPushButton, QFormLayout, QSpinBox, QFileDialog
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QMainWindow
-from PyQt6.QtWidgets import QTabWidget, QLineEdit, QScrollArea, QComboBox, QMessageBox
+from PyQt6.QtWidgets import QTabWidget, QLineEdit, QScrollArea, QComboBox
 from PyQt6.QtWidgets import QGridLayout, QSizePolicy, QStyleFactory, QTextEdit, QProgressBar, QSlider, QCheckBox
 from PyQt6.QtGui import QPixmap, QImage, QFont, QIcon
-from PyQt6.QtCore import Qt, pyqtSignal, QThread, QTimer, QPoint
+from PyQt6.QtCore import Qt, pyqtSignal, QThread, QTimer, QPoint, QSize
 from skimage import measure
 from cellpose import models
 from functools import partial
@@ -233,7 +233,7 @@ class ImageProcessingApp(QMainWindow):
         self.github_link = QLabel()
         self.github_link.setText(
             '<a href="https://github.com/ninagris/Toggle-Untoggle" style="font-size:18px;">'
-            'Our GitHub page</a>'
+            'Our GitHub</a>'
         )
         self.github_link.setTextFormat(Qt.TextFormat.RichText)
         self.github_link.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
@@ -256,16 +256,31 @@ class ImageProcessingApp(QMainWindow):
         self.help_text.setFont(font)
         self.help_text.setReadOnly(True)
         self.help_text.setVisible(False) 
+    
     def update_modes(self):
+        mode = None  # Initialize mode
         sender = self.sender()
         if sender == self.toggle_checkbox and sender.isChecked():
             self.correction_checkbox.setChecked(False)
+            self.drawing_checkbox.setChecked(False)
+            self.erase_checkbox.setChecked(False)
             mode = "toggle"
         elif sender == self.correction_checkbox and sender.isChecked():
             self.toggle_checkbox.setChecked(False)
-            mode = "correction"
-        else:
-            mode = None
+            self.drawing_checkbox.setChecked(False)
+            self.erase_checkbox.setChecked(False)
+            mode = "connect"
+        elif sender == self.drawing_checkbox and sender.isChecked():
+            self.toggle_checkbox.setChecked(False)
+            self.correction_checkbox.setChecked(False)
+            self.erase_checkbox.setChecked(False)
+            mode = 'draw'
+        
+        elif sender == self.erase_checkbox and sender.isChecked():
+            self.toggle_checkbox.setChecked(False)
+            self.correction_checkbox.setChecked(False)
+            self.drawing_checkbox.setChecked(False)
+            mode = 'erase'
 
         if mode:
             for viewer in self.gray_viewers:
@@ -937,12 +952,19 @@ class ImageProcessingApp(QMainWindow):
         button_layout.setSpacing(5)
         button_layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
         self.save_button.clicked.connect(self.collect_all_callbacks)
-         # --- Add toggle/correction checkboxes to a row ---
         checkbox_row = QHBoxLayout()
         checkbox_row.setAlignment(Qt.AlignmentFlag.AlignRight)  # Align content inside the row to the right
 
-        self.toggle_checkbox = QCheckBox("Toggle Mode")
-        self.correction_checkbox = QCheckBox("Correction Mode")
+        self.toggle_checkbox = QCheckBox("Toggle")
+        self.correction_checkbox = QCheckBox("Connect")
+        self.drawing_checkbox = QCheckBox()
+        self.drawing_checkbox.setIcon(QIcon("icons/pen.png"))  # path to your pen icon
+        self.drawing_checkbox.setIconSize(QSize(25, 25))  # adjust icon size
+        self.drawing_checkbox.setText("")
+        self.erase_checkbox = QCheckBox()
+        self.erase_checkbox .setIcon(QIcon("icons/eraser.png"))  # path to your pen icon
+        self.erase_checkbox .setIconSize(QSize(30, 30))  # adjust icon size
+        self.erase_checkbox .setText("")
         self.toggle_checkbox.setChecked(True)
 
         # Styling (optional)
@@ -954,16 +976,30 @@ class ImageProcessingApp(QMainWindow):
             QCheckBox { font-size: 18pt; padding: 5px; }
             QCheckBox::indicator { width: 25px; height: 25px; }
         """)
+        self.drawing_checkbox.setStyleSheet("""
+            QCheckBox { font-size: 18pt; padding: 5px; }
+            QCheckBox::indicator { width: 25px; height: 25px; }
+        """)
+        self.erase_checkbox.setStyleSheet("""
+            QCheckBox { font-size: 18pt; padding: 5px; }
+            QCheckBox::indicator { width: 25px; height: 25px; }
+        """)
 
         self.toggle_checkbox.stateChanged.connect(self.update_modes)
         self.correction_checkbox.stateChanged.connect(self.update_modes)
+        self.drawing_checkbox.stateChanged.connect(self.update_modes)
+        self.erase_checkbox.stateChanged.connect(self.update_modes)
+
 
         checkbox_row.addWidget(self.toggle_checkbox)
         checkbox_row.addWidget(self.correction_checkbox)
+        checkbox_row.addWidget(self.drawing_checkbox)
+        checkbox_row.addWidget(self.erase_checkbox)
 
         # ✅ Wrap row in a widget to control alignment inside main layout
         checkbox_container = QWidget()
         checkbox_container.setLayout(checkbox_row)
+        checkbox_container.setFixedHeight(60)
         layout.addWidget(checkbox_container, alignment=Qt.AlignmentFlag.AlignRight)
         layout.addLayout(checkbox_row)
         layout.addWidget(scroll_area)

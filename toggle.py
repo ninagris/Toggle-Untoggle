@@ -2,8 +2,8 @@ import numpy as np
 import cv2
 from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsTextItem
 from PyQt6.QtGui import QPixmap, QImage, QColor, QFont
-from PyQt6.QtCore import Qt, QPointF
-from PyQt6.QtGui import QPen
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QPen, QPainter
 from PyQt6.QtWidgets import QGraphicsPathItem
 from PyQt6.QtGui import QPainterPath
 from PyQt6.QtWidgets import QMessageBox
@@ -15,7 +15,6 @@ class ClickableMask(QGraphicsPixmapItem):
     def __init__(self, pixmap, name, label, click_callback, binary_mask, connection_mode_getter, viewer):
         super().__init__(pixmap)
         self.setAcceptHoverEvents(True)
-       
         self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
         self.active_opacity = 1.0
         self.inactive_opacity = 0.2
@@ -29,9 +28,9 @@ class ClickableMask(QGraphicsPixmapItem):
         self.viewer = viewer
 
     def mousePressEvent(self, event):
-        if self.viewer.mode == "correction":
-            # Disable toggling during correction mode (stroke connect/disconnect only)
-            print("Toggle disabled during correction mode")
+        if self.viewer.mode == "connect":
+            # Disable toggling during connect mode (stroke connect/disconnect only)
+            print("Toggle disabled during connect mode")
             event.ignore()
             return
 
@@ -60,7 +59,17 @@ class ImageViewer(QGraphicsView):
         self.mask_id_to_group = {}  # for quick lookup: mask_id -> group dict
         self.disconnect_mode = False
         self.mode = "toggle"  # default mode
+        
         self.correction_action = "connect"  # or "disconnect", depending on your UI
+        self.drawing = False
+        self.last_draw_point = None
+
+        self.drawing_canvas = QPixmap(pixmap.size())
+        self.drawing_canvas.fill(Qt.GlobalColor.transparent)
+        self.drawing_item = QGraphicsPixmapItem(self.drawing_canvas)
+        self.drawing_item.setZValue(999)  # On top of masks
+        
+
 
 
 
@@ -75,11 +84,12 @@ class ImageViewer(QGraphicsView):
         self.setStyleSheet("border: none; padding: 0px; margin: 0px;")
 
         # Set up a container for the image
-        self.scene = QGraphicsScene(self)
-        self.setScene(self.scene)
+        self.graphics_scene = QGraphicsScene(self)
+        self.setScene(self.graphics_scene)
+        self.graphics_scene.addItem(self.drawing_item)
         self.setFixedSize(pixmap.size())
         self.pixmap_item = QGraphicsPixmapItem(pixmap)
-        self.scene.addItem(self.pixmap_item)
+        self.graphics_scene.addItem(self.pixmap_item)
 
         self.mask_items = [] # For storing mask items added to the scene
 
@@ -92,14 +102,14 @@ class ImageViewer(QGraphicsView):
         return f"{name}_{label}"
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_C:
-            self.set_mode("correction")
+            self.set_mode("connect")
             self.correction_action = "connect"
-            print("Switched to correction mode → CONNECT")
+            print("Switched to connect mode → CONNECT")
 
         elif event.key() == Qt.Key.Key_D:
-            self.set_mode("correction")
+            self.set_mode("connect")
             self.correction_action = "disconnect"
-            print("Switched to correction mode → DISCONNECT")
+            print("Switched to connect mode → DISCONNECT")
 
         elif event.key() == Qt.Key.Key_T:
             self.set_mode("toggle")
@@ -111,21 +121,29 @@ class ImageViewer(QGraphicsView):
         return self.connection_mode
     
     def mousePressEvent(self, event):
-        if self.mode == "correction":
-            # Accept and start stroke
+        if self.mode == "connect":
             self.mouse_path = [self.mapToScene(event.position().toPoint())]
+            event.accept()
+        elif self.mode == "draw":
+            self.drawing = True
+            self.last_draw_point = self.mapToScene(event.position().toPoint())
+            event.accept()
+        elif self.mode == "erase":
+            self.drawing = True
+            self.last_draw_point = self.mapToScene(event.position().toPoint())
             event.accept()
         else:
             super().mousePressEvent(event)
 
+
     def mouseMoveEvent(self, event):
-        if self.mode == "correction" and event.buttons() & Qt.MouseButton.LeftButton:
+        if self.mode == "connect" and event.buttons() & Qt.MouseButton.LeftButton:
             scene_point = self.mapToScene(event.position().toPoint())
             self.mouse_path.append(scene_point)
 
             # Draw stroke line as before
             if self.connection_line:
-                self.scene.removeItem(self.connection_line)
+                self.graphics_scene.removeItem(self.connection_line)
 
             path = QPainterPath()
             path.moveTo(self.mouse_path[0])
@@ -137,22 +155,53 @@ class ImageViewer(QGraphicsView):
             self.connection_line = QGraphicsPathItem(path)
             self.connection_line.setPen(pen)
             self.connection_line.setZValue(200)
-            self.scene.addItem(self.connection_line)
+            self.graphics_scene.addItem(self.connection_line)
 
             event.accept()
+        elif self.mode == "draw" and self.drawing:
+            painter = QPainter(self.drawing_canvas)
+            pen = QPen(QColor("red"), 3, Qt.PenStyle.SolidLine)
+            painter.setPen(pen)
+            current_point = self.mapToScene(event.position().toPoint())
+            painter.drawLine(self.last_draw_point, current_point)
+            painter.end()
+
+            self.drawing_item.setPixmap(self.drawing_canvas)
+            self.last_draw_point = current_point
+            event.accept()
+        elif self.mode == "erase" and self.drawing:
+            painter = QPainter(self.drawing_canvas)
+            # Set composition mode to clear to erase
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+            eraser_size = 30  # or any size you want
+            pen = QPen(QColor(0, 0, 0, 0), eraser_size)
+            painter.setPen(pen)
+            current_point = self.mapToScene(event.position().toPoint())
+            painter.drawLine(self.last_draw_point, current_point)
+            painter.end()
+
+            self.drawing_item.setPixmap(self.drawing_canvas)
+            self.last_draw_point = current_point
+            event.accept()
+
         else:
             super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
-        if self.mode == "correction" and event.button() == Qt.MouseButton.LeftButton:
-            print(f"Mouse released in correction mode, action: {self.correction_action}")
+        if self.mode == "connect" and event.button() == Qt.MouseButton.LeftButton:
+            print(f"Mouse released in connect mode, action: {self.correction_action}")
             self.mouse_path.append(self.mapToScene(event.position().toPoint()))
             self.handle_mouse_path()
             self.mouse_path = []
             if self.connection_line:
-                self.scene.removeItem(self.connection_line)
+                self.graphics_scene.removeItem(self.connection_line)
                 self.connection_line = None
             event.accept()
+        elif self.mode in ("draw", "erase") and event.button() == Qt.MouseButton.LeftButton:
+            self.drawing = False
+            self.last_draw_point = None
+            event.accept()
+
         else:
             super().mouseReleaseEvent(event)
 
@@ -171,23 +220,20 @@ class ImageViewer(QGraphicsView):
                     return (pixel.red(), pixel.green(), pixel.blue(), pixel.alpha())
         
         return (255, 255, 255, 255)  # fallback white
+    
     def set_mode(self, mode):
-        """
-        mode: 'toggle' or 'correction'
-        """
-        if mode not in ("toggle", "correction"):
+        if mode not in ("toggle", "connect", "draw", "erase"):
             print(f"Invalid mode: {mode}")
             return
-
         self.mode = mode
-        self.connection_mode = (mode == "correction")  # connection mode only ON in correction
-        self.disconnect_mode = (mode == "correction")  # allow disconnect in correction mode
-
+        self.connection_mode = (mode == "connect")
+        self.disconnect_mode = (mode == "connect")
         print(f"Mode switched to {mode}")
 
+
     def is_connection_mode(self):
-        # Only connection mode active if in correction mode
-        return self.mode == "correction"
+        # Only connection mode active if in connect mode
+        return self.mode == "connect"
    
     def handle_mouse_path(self):
         hit_masks = set()
@@ -248,7 +294,7 @@ class ImageViewer(QGraphicsView):
             for group in unique_groups:
                 merged_mask_ids.update(group["mask_ids"])
                 merged_items.extend(self.get_items_by_ids(group["mask_ids"]))
-                self.scene.removeItem(group["star_item"])
+                self.graphics_scene.removeItem(group["star_item"])
                 self.connected_groups.remove(group)
 
         new_group = {
@@ -325,7 +371,7 @@ class ImageViewer(QGraphicsView):
         # If only 1 mask remains, dissolve the group and recolor it
         if len(group["mask_ids"]) < 2:
             if group["star_item"]:
-                self.scene.removeItem(group["star_item"])
+                self.graphics_scene.removeItem(group["star_item"])
             self.connected_groups.remove(group)
 
             for remaining_id in group["mask_ids"]:
@@ -398,7 +444,7 @@ class ImageViewer(QGraphicsView):
 
             mask_item.setZValue(1)
             mask_item.setPos(0, 0)
-            self.scene.addItem(mask_item)
+            self.graphics_scene.addItem(mask_item)
             self.mask_items.append(mask_item)
 
             if show_labels:
@@ -425,7 +471,7 @@ class ImageViewer(QGraphicsView):
 
                 rect = label_item.boundingRect()
                 label_item.setPos(scaled_x - rect.width() / 2, scaled_y - rect.height() / 2)
-                self.scene.addItem(label_item)
+                self.graphics_scene.addItem(label_item)
 
     # override method
     def resizeEvent(self, event):
