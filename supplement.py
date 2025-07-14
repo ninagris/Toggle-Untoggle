@@ -207,3 +207,39 @@ def normalize_to_uint8(array):
     array = array - array.min()
     array = (array / array.max() * 255).astype(np.uint8)
     return array
+
+def compute_region_properties(mask, intensity_image=None):
+    props_to_measure = [
+        'label',
+        'area',
+        'bbox_area',
+        'area_convex',
+        'perimeter',
+        'eccentricity',
+        'extent',
+        'major_axis_length',
+        'minor_axis_length',
+        'equivalent_diameter_area',
+        'feret_diameter_max',
+        'orientation',
+        'perimeter_crofton',
+        'solidity',
+        'centroid'
+    ]
+    mask = mask.astype(np.uint8)
+    if intensity_image is not None:
+        props_to_measure += [
+            'mean_intensity',
+            'max_intensity',
+            'min_intensity',
+        ]
+
+    props = measure.regionprops_table(
+        mask,
+        intensity_image=intensity_image,
+        properties=props_to_measure
+    )
+    df = pd.DataFrame(props)
+    df.rename(columns={"centroid-0": "centroid_y", "centroid-1": "centroid_x"}, inplace=True)
+
+    return df

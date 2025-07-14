@@ -28,52 +28,84 @@ class ClickableMask(QGraphicsPixmapItem):
         self.viewer = viewer
 
     def mousePressEvent(self, event):
-        if self.viewer.mode == "connect":
-            # Disable toggling during connect mode (stroke connect/disconnect only)
-            print("Toggle disabled during connect mode")
+        if self.connection_mode_getter():
             event.ignore()
             return
 
-        # Existing toggle logic for toggle mode
-        if self.opacity() == self.active_opacity:
-            self.setOpacity(self.inactive_opacity)
-            self.is_inactive = True
-        else:
-            self.setOpacity(self.active_opacity)
-            self.is_inactive = False
+        if self.viewer.mode == "toggle":
+            # Use group toggle if in group
+            mask_id = self.viewer.get_mask_id(self.name, self.label)
+            group = self.viewer.mask_id_to_group.get(mask_id)
 
-        self.click_callback(self.name, self.label, not self.is_inactive)
+            if group:
+                # Determine new state from current item
+                turning_off = self.opacity() == self.viewer.active_opacity
+                merged_key = self.viewer.generate_merged_key(self.name, group["mask_ids"])
+                
+                # Update callback_dict for the merged mask
+                self.viewer.callback_dict[merged_key] = {
+                    "name": self.name,
+                    "label": merged_key.split('_', 1)[1],  # Extract the merged label
+                    "is_active": not turning_off,
+                    "merged": True
+                }
+
+                # Update individual masks in the group
+                for mid in group["mask_ids"]:
+                    item = self.viewer.get_item_by_id(mid)
+                    if item:
+                        item.setOpacity(self.viewer.inactive_opacity if turning_off else self.viewer.active_opacity)
+                        item.is_inactive = turning_off
+                        # Remove or mark individual masks as inactive in callback_dict
+                        individual_key = f"{item.name}_{item.label}"
+                        if turning_off:
+                            if individual_key in self.viewer.callback_dict:
+                                self.viewer.callback_dict[individual_key]["is_active"] = False
+                        else:
+                            if individual_key in self.viewer.callback_dict:
+                                self.viewer.callback_dict[individual_key]["is_active"] = True
+
+                if turning_off and merged_key in self.viewer.new_mask_dict:
+                    print(f"🗑️ Toggled OFF — removing {merged_key} from new_mask_dict")
+                    del self.viewer.new_mask_dict[merged_key]
+
+            else:
+                # Fallback: toggle just self
+                turning_off = self.opacity() == self.viewer.active_opacity
+                self.setOpacity(self.viewer.inactive_opacity if turning_off else self.viewer.active_opacity)
+                self.is_inactive = turning_off
+                self.viewer.mask_click_callback(self.name, self.label, not turning_off)
+
+            event.accept()
+
         event.accept()
 
 class ImageViewer(QGraphicsView):
-    def __init__(self, pixmap, masks, font_size, show_labels=False, colors=None):
+    def __init__(self, pixmap, masks, font_size, show_labels=False, colors=None, image_name=None, worker=None):
         super().__init__()
 
         self.callback_dict = {} # Collect callback functions for each mask
         self.connection_mode = False
         self.mouse_path = []
         self.connection_line = None
-        self.connected_pairs = set()
         self.original_masks = masks
         self.connected_groups = []  # each group is a dict: {'mask_ids': set, 'color': tuple, 'star_item': QGraphicsTextItem}
         self.mask_id_to_group = {}  # for quick lookup: mask_id -> group dict
         self.disconnect_mode = False
         self.mode = "toggle"  # default mode
-        
+        self.new_mask_dict = {}
         self.correction_action = "connect"  # or "disconnect", depending on your UI
         self.drawing = False
         self.last_draw_point = None
-
+        self.image_name = image_name
         self.drawing_canvas = QPixmap(pixmap.size())
         self.drawing_canvas.fill(Qt.GlobalColor.transparent)
         self.drawing_item = QGraphicsPixmapItem(self.drawing_canvas)
         self.drawing_item.setZValue(999)  # On top of masks
-        
-
-
-
-
-
+        self.active_opacity = 1.0
+        self.inactive_opacity = 0.2
+        self.worker = worker
+        self.pre_merge_callback_state = {}
 
         # Disable scroll bars
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -97,9 +129,13 @@ class ImageViewer(QGraphicsView):
         num_masks = len(masks)
         colors = self.generate_colors(num_masks)
         self.set_togglable_masks(masks, colors, pixmap, font_size=font_size, show_labels=show_labels)
+        
+    def generate_merged_key(self, name, mask_ids):
+        labels = sorted(str(self.get_item_by_id(mid).label) for mid in mask_ids)
+        return  f"{name}({','.join(labels)})"
+   
+  
     
-    def get_mask_id(self, name, label):
-        return f"{name}_{label}"
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_C:
             self.set_mode("connect")
@@ -156,8 +192,8 @@ class ImageViewer(QGraphicsView):
             self.connection_line.setPen(pen)
             self.connection_line.setZValue(200)
             self.graphics_scene.addItem(self.connection_line)
-
             event.accept()
+
         elif self.mode == "draw" and self.drawing:
             painter = QPainter(self.drawing_canvas)
             pen = QPen(QColor("red"), 3, Qt.PenStyle.SolidLine)
@@ -169,6 +205,7 @@ class ImageViewer(QGraphicsView):
             self.drawing_item.setPixmap(self.drawing_canvas)
             self.last_draw_point = current_point
             event.accept()
+
         elif self.mode == "erase" and self.drawing:
             painter = QPainter(self.drawing_canvas)
             # Set composition mode to clear to erase
@@ -188,6 +225,7 @@ class ImageViewer(QGraphicsView):
             super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
+
         if self.mode == "connect" and event.button() == Qt.MouseButton.LeftButton:
             print(f"Mouse released in connect mode, action: {self.correction_action}")
             self.mouse_path.append(self.mapToScene(event.position().toPoint()))
@@ -236,14 +274,16 @@ class ImageViewer(QGraphicsView):
         return self.mode == "connect"
    
     def handle_mouse_path(self):
+
+        print("call back_ dict", self.callback_dict)
         hit_masks = set()
-        for item in self.mask_items:
+        for item in self.mask_items: # mask_items are all currently displayed masks objects
             if item.is_inactive:
                 continue  # Skip masks that are toggled off
             for pt in self.mouse_path:
                 scene_x, scene_y = pt.x(), pt.y()
 
-                # Convert scene coordinates to image mask coordinates
+                # mapping mouse position on the screen to actual pixel positions inside the mask array
                 img_x = int(scene_x * item.binary_mask.shape[1] / self.pixmap_item.pixmap().width())
                 img_y = int(scene_y * item.binary_mask.shape[0] / self.pixmap_item.pixmap().height())
 
@@ -251,25 +291,71 @@ class ImageViewer(QGraphicsView):
                     if item.binary_mask[img_y, img_x]:
                         hit_masks.add(item)
                         break
+        
+        active_items = [m for m in hit_masks if not m.is_inactive]
+      
 
-        if len(hit_masks) < 2:
-            print(f"Need at least 2 active masks (got {len(hit_masks)}).")
+        if len(active_items) > 1:
+            print(f"🟢 Proceeding with merge for {len(active_items)} active items")
+            
+            merged_mask = np.zeros_like(active_items[0].binary_mask, dtype=np.int32)
+            label_names = []
+
+            for item in active_items:
+                merged_mask[item.binary_mask > 0] = 1
+                label_names.append(str(item.label))
+
+            label_names = sorted(label_names)
+            combined_label = "_".join(label_names)
+            name = active_items[0].name
+            mask_key = f"{name}_({combined_label})"
+
+            self.new_mask_dict[mask_key] = {
+                "mask": merged_mask,
+                "source": "connect",
+                "image_name": name,
+                "label_group": label_names
+            }
+            self.callback_dict[mask_key] = {
+                "name": name,
+                "label": mask_key,  # the combined label string
+                "is_active": True,
+                "merged": True
+            }
+
+
+            print(f"✅ Created merged mask: {mask_key}")
+
+        else:
+            print(f"🔴 Not enough active masks to merge: {len(active_items)} active out of {len(hit_masks)} total")
             return
 
-        mask_ids = {self.get_mask_id(m.name, m.label) for m in hit_masks}
+        
 
-        connected_mask_ids = {self.get_mask_id(m.name, m.label) for m in hit_masks if self.get_mask_id(m.name, m.label) in self.mask_id_to_group}
+        mask_ids = {self.get_mask_id(m.name, m.label) for m in active_items}
+        merged_mask_ids = set(mask_ids)  # define it here early
+        connected_mask_ids = set()
+        for m in hit_masks:
+            mask_id = self.get_mask_id(m.name, m.label)
+            print(f"Checking mask item: {m}, mask_id: {mask_id}")
+            if mask_id in self.mask_id_to_group:
+                connected_mask_ids.add(mask_id)
+        print('connected mask ids', connected_mask_ids)
 
         if len(connected_mask_ids) == len(hit_masks):
-            # All masks are connected —> disconnect them
             group_ids = [self.mask_id_to_group[mid] for mid in connected_mask_ids]
             if len(set(map(id, group_ids))) > 1:
                 print("Not all masks are in the same group; can't disconnect.")
                 return
 
             print("Auto-disconnecting group")
-            for mid in connected_mask_ids:
-                self.disconnect_mask(mid)
+          
+
+            group = self.mask_id_to_group.get(next(iter(connected_mask_ids)))
+            if group:
+                self.disconnect_group(group)
+
+
             return
         else:
             # Not all masks are connected —> proceed to connect
@@ -278,6 +364,7 @@ class ImageViewer(QGraphicsView):
 
         # === Connection logic ===
         groups = [self.mask_id_to_group[mid] for mid in mask_ids if mid in self.mask_id_to_group]
+        print("groups", groups)
         seen = set()
         unique_groups = []
         for group in groups:
@@ -285,7 +372,8 @@ class ImageViewer(QGraphicsView):
             if group_id not in seen:
                 seen.add(group_id)
                 unique_groups.append(group)
-
+        print('seen', seen)
+        print('unique groups', unique_groups)
         merged_mask_ids = set(mask_ids)
         merged_items = list(hit_masks)
         merged_color = merged_items[0].default_color
@@ -294,50 +382,53 @@ class ImageViewer(QGraphicsView):
             for group in unique_groups:
                 merged_mask_ids.update(group["mask_ids"])
                 merged_items.extend(self.get_items_by_ids(group["mask_ids"]))
-                self.graphics_scene.removeItem(group["star_item"])
                 self.connected_groups.remove(group)
-
+        print("merged_mask_ids", merged_mask_ids)
         new_group = {
             "mask_ids": merged_mask_ids,
             "color": merged_color,
-            "star_item": None,
+            'mask': merged_mask
         }
         self.connected_groups.append(new_group)
+        print("connected grioups", self.connected_groups)
 
         for mid in merged_mask_ids:
+            print(f"  Adding {mid} to mask_id_to_group")
             self.mask_id_to_group[mid] = new_group
+        print("mask_id_to_group keys now:", list(self.mask_id_to_group.keys()))
 
-        for item in merged_items:
+        for item in active_items:
             self.recolor_mask(item, merged_color)
-            key = f"{item.name}{item.label}"
+            key = f"{item.name}_{item.label}"
+            if key not in self.pre_merge_callback_state:
+                self.pre_merge_callback_state[key] = self.callback_dict.get(key, {}).copy()
+
+
             if key in self.callback_dict:
                 self.callback_dict[key]["merged"] = True
             else:
+                
                 self.callback_dict[key] = {
                     "name": item.name,
                     "label": item.label,
-                    "is_active": not item.is_inactive,
-                    "merged": True
+                    "is_active": True,
+                    "merged": False
                 }
+
 
 
     def get_item_by_id(self, mask_id):
         for item in self.mask_items:
+            print("item", item)
             if self.get_mask_id(item.name, item.label) == mask_id:
                 return item
         return None
     
-    def show_warning(self, title, message):
-        msg_box = QMessageBox(self)
-        msg_box.setIcon(QMessageBox.Icon.Warning)
-        msg_box.setWindowTitle(title)
-        msg_box.setText(message)
-        msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
-        msg_box.exec()
-
     def get_items_by_ids(self, id_set):
             return [self.get_item_by_id(mid) for mid in id_set]
     
+    def get_mask_id(self, name, label):
+        return f"{name}_{label}"
 
     def disconnect_mask(self, mask_id):
         print(f"Attempting to disconnect {mask_id}")
@@ -345,40 +436,157 @@ class ImageViewer(QGraphicsView):
         if not group:
             print("Not in a group.")
             return
-        # Get ALL items in this group BEFORE modifying
-        all_group_ids = set(group["mask_ids"])
-        all_group_items = [self.get_item_by_id(mid) for mid in all_group_ids]
 
-        # Remove mask_id from group
-        group["mask_ids"].remove(mask_id)
-        del self.mask_id_to_group[mask_id]
-
-        # Recolor the disconnected mask
+        # ✅ Now group is always defined beyond this point
         disconnected_item = self.get_item_by_id(mask_id)
-        if disconnected_item:
-            self.recolor_mask(disconnected_item, disconnected_item.default_color)
-            key = f"{disconnected_item.name}{disconnected_item.label}"
-            if key in self.callback_dict:
-                self.callback_dict[key]["merged"] = False
-            else:
-                self.callback_dict[key] = {
-                    "name": disconnected_item.name,
-                    "label": disconnected_item.label,
-                    "is_active": not disconnected_item.is_inactive,
-                    "merged": False
-                }
+        if disconnected_item is None:
+            print(f"⚠️ No item found for {mask_id}")
+            return
 
-        # If only 1 mask remains, dissolve the group and recolor it
+        label_names = sorted(
+            str(self.get_item_by_id(mid).label)
+            for mid in group["mask_ids"]
+            if self.get_item_by_id(mid)
+        )
+        name = disconnected_item.name
+        merged_key = f"{name}_({','.join(label_names)})"
+
+    
+        if merged_key in self.callback_dict:
+            del self.callback_dict[merged_key]
+        if merged_key in self.new_mask_dict:
+            print(f"🗑️ Removing merged entry from new_mask_dict: {merged_key}")
+            del self.new_mask_dict[merged_key]
+        print("Trying to delete merged_key:", merged_key)
+        print("Keys in new_mask_dict:", list(self.new_mask_dict.keys()))
+
+        for remaining_id in group["mask_ids"]:
+            item = self.get_item_by_id(remaining_id)
+            if not item:
+                continue
+
+            key = f"{item.name}_{item.label}"
+            cached = self.pre_merge_callback_state.get(key)
+            self.callback_dict[key] = {
+                "name": item.name,
+                "label": item.label,
+                "is_active": cached["is_active"] if cached else True,
+                "merged": False
+            }
+
+
+            self.new_mask_dict[key] = {
+                "mask": item.binary_mask,
+                "source": "disconnect",
+                "image_name": item.name,
+                "label_group": [str(item.label)],
+            }
+
+
+        self.connected_groups = [g for g in self.connected_groups if g != group]
+ 
+    
+        # Step 2: If group has < 2 remaining → dissolve it fully
         if len(group["mask_ids"]) < 2:
-            if group["star_item"]:
-                self.graphics_scene.removeItem(group["star_item"])
+            print("🧹 Group has less than 2 items → dissolving group")
             self.connected_groups.remove(group)
 
-            for remaining_id in group["mask_ids"]:
+            for remaining_id in list(group["mask_ids"]):  # even if it's just 1
+                
                 item = self.get_item_by_id(remaining_id)
                 if item:
                     self.recolor_mask(item, item.default_color)
-                del self.mask_id_to_group[remaining_id]
+                    item.setOpacity(self.active_opacity)
+                    item.is_inactive = False
+
+                    # 🔴 This may be missing:
+                    if remaining_id in self.mask_id_to_group:
+                        del self.mask_id_to_group[remaining_id]
+
+                    if remaining_id == mask_id:
+                        continue 
+
+                    key = f"{item.name}_{item.label}"
+                    cached = self.pre_merge_callback_state.get(key)
+                    self.callback_dict[key] = {
+                        "name": item.name,
+                        "label": item.label,
+                        "is_active": cached["is_active"] if cached else True,
+                        "merged": False
+                    }
+
+
+                    self.new_mask_dict[key] = {
+                        "mask": item.binary_mask,
+                        "source": "disconnect",
+                        "image_name": item.name,
+                        "label_group": [str(item.label)],
+                    }
+
+        # Step 3: Refresh scene
+        if merged_key in self.new_mask_dict:
+            print(f"🧼 Removing merged key from self.new_mask_dict: {merged_key}")
+            del self.new_mask_dict[merged_key]
+        if group in self.connected_groups:
+            self.connected_groups.remove(group)
+        self.scene().update()
+        self.viewport().update()
+
+    def disconnect_group(self, group):
+        print(f"🔄 Disconnecting full group with mask_ids: {group['mask_ids']}")
+
+        # Generate merged key (before group is dissolved)
+        label_names = sorted(
+            str(self.get_item_by_id(mid).label)
+            for mid in group["mask_ids"]
+            if self.get_item_by_id(mid)
+        )
+        name = next(iter(group["mask_ids"])).split("_")[0]  # crude way to extract name
+        merged_key = f"{name}_({','.join(label_names)})"
+
+   
+        if merged_key in self.callback_dict:
+            del self.callback_dict[merged_key]
+        if merged_key in self.new_mask_dict:
+            print(f"🗑️ Removing merged entry from new_mask_dict: {merged_key}")
+            del self.new_mask_dict[merged_key]
+        
+
+        for mid in list(group["mask_ids"]):
+            item = self.get_item_by_id(mid)
+            if not item:
+                continue
+            self.recolor_mask(item, item.default_color)
+            item.setOpacity(self.active_opacity)
+            item.is_inactive = False
+
+            if mid in self.mask_id_to_group:
+                del self.mask_id_to_group[mid]
+
+            key = f"{item.name}_{item.label}"
+            self.callback_dict[key] = {
+                "name": item.name,
+                "label": item.label,
+                "is_active": True,
+                "merged": False
+            }
+
+            self.new_mask_dict[key] = {
+                "mask": item.binary_mask,
+                "source": "disconnect",
+                "image_name": item.name,
+                "label_group": [str(item.label)],
+            }
+
+        
+        if group in self.connected_groups:
+            self.connected_groups.remove(group)
+        
+        self.scene().update()
+        self.viewport().update()
+
+
+
 
 
 
@@ -403,24 +611,31 @@ class ImageViewer(QGraphicsView):
 
 
 
-
-
-
-
-
     def set_togglable_masks(self, masks, colors, pixmap, font_size, show_labels=False):
         """
         Making each mask a togglable object with assigned properties, centered at its object centroid.
         """
-        image_width = pixmap.width()
-        image_height = pixmap.height()
 
+        for item in self.mask_items:
+            self.graphics_scene.removeItem(item)
+        self.mask_items.clear()
+        self.connected_groups.clear()
+        self.mask_id_to_group.clear()
         for i, mask_data in enumerate(masks):
             label = mask_data["label"]
             name = mask_data["image_name"]
             mask = mask_data["mask"]  # 2D numpy binary mask
             color = colors[i]
-           
+
+            key = f"{name}_{label}"
+            if key not in self.callback_dict:
+                self.callback_dict[key] = {
+                    "name": name,
+                    "label": label,
+                    "is_active": True,
+                    "merged": False
+                }
+                
 
             # Convert mask to pixmap and scale it to the image size
             mask_pixmap = self.convert_mask_to_pixmap(mask, color)
@@ -504,10 +719,10 @@ class ImageViewer(QGraphicsView):
         q_image = QImage(colored_mask.data, width, height, width * 4, QImage.Format.Format_RGBA8888)
         return QPixmap.fromImage(q_image)
     
+   
     def mask_click_callback(self, name, label, is_active):
         """
         Update or add entry for the mask clicked
         """
-        self.callback_dict[f"{name}{label}"] = {'name': name, 'label': label, 'is_active': is_active}  
-
+        self.callback_dict[f"{name}_{label}"] = {'name': name, 'label': label, 'is_active': is_active}  
 
