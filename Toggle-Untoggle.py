@@ -291,7 +291,6 @@ class ImageProcessingApp(QMainWindow):
 
     
     def handle_model_selection(self, model_type: str, custom_path: str):
-        print(f"[MODEL] Attempting to load: model_type='{model_type}', custom_path='{custom_path}'")
 
         # Always clear the current model first
         self.model = None
@@ -305,18 +304,15 @@ class ImageProcessingApp(QMainWindow):
                 if not os.path.exists(custom_path):
                     print(f"[MODEL] Custom model path doesn't exist: {custom_path}")
                     raise ValueError("Custom model path does not exist.")
-                print(f"[MODEL] Loading custom model from: {custom_path}")
                 self.model = models.CellposeModel(gpu=True, pretrained_model=custom_path)
 
             elif model_type in ["cyto", "cyto2", "cyto3", "nuclei"]:
-                print(f"[MODEL] Loading built-in model type: {model_type}")
                 self.model = models.CellposeModel(gpu=True, model_type=model_type)
 
             else:
                 raise ValueError("Invalid model type selection.")
 
             self.model.device = torch.device("mps")
-            print(f"[MODEL] Model loaded successfully on {self.model.device}")
 
         except Exception as e:
             self.model = None  # ← extra safety
@@ -1052,9 +1048,7 @@ class ImageProcessingApp(QMainWindow):
 
         for viewer in self.gray_viewers:
             for cb_key, cb_data in viewer.callback_dict.items():
-                print("cb keys 2", cb_key, cb_data)
                 if not cb_data.get("is_active"):
-                    print("inactive cb:", cb_key)
                     inactive_keys.add(cb_key)
                     continue
                 active_keys.add(cb_key)
@@ -1101,9 +1095,7 @@ class ImageProcessingApp(QMainWindow):
 
         for viewer in self.gray_viewers:
             for cb_key, cb_data in viewer.callback_dict.items():
-                print("cb keys 2", cb_key, cb_data)
                 if not cb_data.get("is_active"):
-                    print("inactive cb:", cb_key)
                     inactive_keys.add(cb_key)
                     continue
                 active_keys.add(cb_key)
@@ -1124,56 +1116,158 @@ class ImageProcessingApp(QMainWindow):
 
 
     
-    def save_rois_to_zip(self, correct_df, active_keys, inactive_keys):
-
+    def save_rois_to_zip(self, correct_df):
         """
         Converts segmentation masks into ROI files and packages them into ZIP archives.
         
         Parameters:
             correct_df (pd.DataFrame): DataFrame containing valid objects to convert into ROIs.
         """
-        combined_df = self.integrate_new_objects(correct_df, active_keys, inactive_keys)
-        self.worker.all_props_df = combined_df  # Update main dataframe here
+        # Step 1: Gather active keys from all viewers
+        active_keys = set()
+        for viewer in self.gray_viewers:
+            for cb_key, cb_data in viewer.callback_dict.items():
+                if cb_data.get("is_active", False):
+                    active_keys.add(cb_key)
 
+        # Step 2: Integrate new objects to get combined_df with active masks
+        combined_df, _ = self.integrate_new_objects(correct_df, active_keys, set())
+
+        # Step 3: Filter combined_df to only include active masks with valid labels
+        combined_df = combined_df[
+            combined_df.apply(
+                lambda r: f"{r['image_name']}_{r['label']}" in active_keys and pd.notnull(r['label']) and str(r['label']).strip() != '',
+                axis=1
+            )
+        ]
+
+        # Step 4: Create ROI directory and prepare image masks
         roi_dir = os.path.join(self.images_folder_path.text(), self.roi_folder_name.text())
         os.makedirs(roi_dir, exist_ok=True)
         image_masks_dict = {}
 
+        # Step 5: Process active masks (individual and merged)
+        label_map = {}
+        image_masks_dict = {}
+      
         for _, row in combined_df.iterrows():
             image_name = row['image_name']
             label = row['label']
-            mask_key = f"{image_name}_{label}"
+            label_str = str(label)
+            mask_key = f"{image_name}_{label_str}"
+            print("mask key.....:", mask_key)
 
-            if mask_key in self.worker.masks_dict:
-                mask = self.worker.masks_dict[mask_key]["mask"]
-                if image_name not in image_masks_dict:
-                    shape = self.worker.image_shape
-                    image_masks_dict[image_name] = np.zeros(shape, dtype=np.uint8)
-                image_masks_dict[image_name][mask > 0] = label
+            mask = None
 
+            # === 1. Try to get mask from viewer.new_mask_dict (merged masks) ===
+            for viewer in self.gray_viewers:
+                if mask_key in viewer.new_mask_dict:
+                    print("✅ Retrieved from new_mask_dict:", mask_key)
+                    mask = viewer.new_mask_dict[mask_key]["mask"]
+                    break
+
+            # === 2. Try to get mask from viewer.callback_dict and reconstruct from worker ===
+            if mask is None:
+                for viewer in self.gray_viewers:
+                    if mask_key in viewer.callback_dict:
+                        cb_data = viewer.callback_dict[mask_key]
+
+                        # Try direct mask in callback
+                        if "mask" in cb_data:
+                            mask = cb_data["mask"]
+                            print(f"✅ Retrieved mask from viewer.callback_dict for {mask_key}")
+                            break
+                        elif "binary_mask" in cb_data:
+                            mask = cb_data["binary_mask"]
+                            print(f"✅ Retrieved binary_mask from viewer.callback_dict for {mask_key}")
+                            break
+                        else:
+                            # Reconstruct from label_mask using cb_data
+                            image_name_cb = cb_data.get("name")
+                            label_cb = cb_data.get("label")
+
+                            if image_name_cb in self.worker.masks_dict:
+                                label_mask = self.worker.masks_dict[image_name_cb]["label_mask"]
+                                mask = (label_mask == int(label_cb)).astype(np.uint8)
+                                print(f"✅ Reconstructed mask from label_mask for {mask_key}")
+                                break
+
+            # === 3. Skip if mask still not found or empty ===
+            if mask is None:
+                print(f"⚠️ No mask found for {mask_key}")
+                continue
+            if np.sum(mask) == 0:
+                print(f"⚠️ Empty mask for {mask_key}")
+                continue
+
+            # === 4. Assign label value
+            if '(' in label_str:
+                label_value = 1000 + len(label_map) + 1
+            else:
+                try:
+                    label_value = int(label)
+                except (ValueError, TypeError):
+                    label_value = 2000 + len(label_map) + 1
+                    print(f"Assigned non-integer label {label_str} to value {label_value}")
+
+            label_map[mask_key] = label_value
+
+            # === 5. Store mask
+            if image_name not in image_masks_dict:
+                shape = self.worker.image_shape
+                image_masks_dict[image_name] = np.zeros(shape, dtype=np.uint16)
+
+            image_masks_dict[image_name][mask > 0] = label_value
+            print(f"✅ Stored mask for {mask_key} as label {label_value}")
+
+
+
+
+
+        # Step 6: Generate ROI files for each image
         for image_name, full_mask in image_masks_dict.items():
             rotated_mask = np.rot90(np.flipud(full_mask), k=-1)
             roi_list = []
-            labels = correct_df[correct_df["image_name"] == image_name]["label"].unique()
+
+            labels = []
+            for key in label_map:
+                if key.startswith(image_name + "_"):
+                    labels.append(key[len(image_name)+1:])
+
 
             for label in labels:
-                binary_mask = (rotated_mask == label).astype(np.uint8)
+                mask_key = f"{image_name}_{label}"
+                label_value = label_map.get(mask_key)
+            
+                if label_value is None:
+                    print(f"⚠️ Missing label_value for {mask_key} in label_map.")
+                    continue
+
+                binary_mask = (rotated_mask == label_value).astype(np.uint8)
+                print(f"Generating ROI for {mask_key}, label_value: {label_value}, unique values in binary_mask: {np.unique(binary_mask)}")
+
                 contours = measure.find_contours(binary_mask, 0.5)
+                print(f"Found {len(contours)} contours for {mask_key}")
+
                 for contour in contours:
                     contour = np.round(contour).astype(np.int32)
                     if contour.shape[0] < 10:
                         continue
                     roi = roifile.ImagejRoi.frompoints(contour)
-                    roi_filename = f"{os.path.splitext(image_name)[0]}_label{label}.roi"
+                    roi_filename = f"{os.path.splitext(image_name)[0]}_label{label}{'_merged' if '(' in label else ''}.roi"
                     roi_list.append((roi_filename, roi))
-        
-            if roi_list:
-                zip_path = os.path.join(roi_dir, f"{os.path.splitext(image_name)[0]}.zip")
-                if os.path.exists(zip_path):
-                    os.remove(zip_path)
-                with zipfile.ZipFile(zip_path, 'w') as zipf:
-                    for roi_filename, roi in roi_list:
-                        zipf.writestr(roi_filename, roi.tobytes())
+
+                    # Step 7: Save ROIs to ZIP file
+                    zip_path = os.path.join(roi_dir, f"{os.path.splitext(image_name)[0]}.zip")
+                    if roi_list:  # Check if roi_list is non-empty
+                        if os.path.exists(zip_path):
+                            os.remove(zip_path)
+                        with zipfile.ZipFile(zip_path, 'w') as zipf:
+                            for roi_filename, roi in roi_list:
+                                zipf.writestr(roi_filename, roi.tobytes())
+                        print(f"Saved {len(roi_list)} ROIs to {zip_path}")
+                    else:
+                        print(f"No ROIs generated for {image_name}")
 
 
         # === Remove inactive + reused label rows ===
@@ -1322,8 +1416,6 @@ class ImageProcessingApp(QMainWindow):
         if excluded_rows:
             excluded_df = pd.concat([excluded_df, pd.concat(excluded_rows, ignore_index=True)], ignore_index=True)
 
-        print("2222", combined_df)
-
         # --- Step 7: Normalize merged labels for consistency ---
         group_map = {}
         for viewer in self.gray_viewers:
@@ -1418,8 +1510,6 @@ class ImageProcessingApp(QMainWindow):
                 "mask": group.get("mask")
             }
             grouped.append(group_copy)
-
-        print("grouppped", grouped)
 
         return grouped
 

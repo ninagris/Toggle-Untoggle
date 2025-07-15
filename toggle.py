@@ -28,9 +28,13 @@ class ClickableMask(QGraphicsPixmapItem):
         self.viewer = viewer
 
     def mousePressEvent(self, event):
-        if self.connection_mode_getter():
+        print(f"Mouse press in {self.name}_{self.label}, viewer mode: {self.viewer.mode}, connection_mode_getter: {self.connection_mode_getter()}")
+
+        # Check both connection_mode_getter and viewer.mode to ensure consistency
+        if self.connection_mode_getter() or self.viewer.mode != "toggle":
             event.ignore()
             return
+
 
         if self.viewer.mode == "toggle":
             # Use group toggle if in group
@@ -78,7 +82,7 @@ class ClickableMask(QGraphicsPixmapItem):
 
             event.accept()
 
-        event.accept()
+        
 
 class ImageViewer(QGraphicsView):
     def __init__(self, pixmap, masks, font_size, show_labels=False, colors=None, image_name=None, worker=None):
@@ -86,6 +90,7 @@ class ImageViewer(QGraphicsView):
 
         self.callback_dict = {} # Collect callback functions for each mask
         self.connection_mode = False
+        self.disconnect_mode = False  # Explicitly initialize
         self.mouse_path = []
         self.connection_line = None
         self.original_masks = masks
@@ -106,6 +111,7 @@ class ImageViewer(QGraphicsView):
         self.inactive_opacity = 0.2
         self.worker = worker
         self.pre_merge_callback_state = {}
+        self.set_mode("toggle")
 
         # Disable scroll bars
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -245,7 +251,6 @@ class ImageViewer(QGraphicsView):
 
 
 
-
     def extract_color_from_pixmap(self, pixmap):
         image = pixmap.toImage()
         width, height = image.width(), image.height()
@@ -275,7 +280,6 @@ class ImageViewer(QGraphicsView):
    
     def handle_mouse_path(self):
 
-        print("call back_ dict", self.callback_dict)
         hit_masks = set()
         for item in self.mask_items: # mask_items are all currently displayed masks objects
             if item.is_inactive:
@@ -296,8 +300,7 @@ class ImageViewer(QGraphicsView):
       
 
         if len(active_items) > 1:
-            print(f"🟢 Proceeding with merge for {len(active_items)} active items")
-            
+      
             merged_mask = np.zeros_like(active_items[0].binary_mask, dtype=np.int32)
             label_names = []
 
@@ -323,9 +326,6 @@ class ImageViewer(QGraphicsView):
                 "merged": True
             }
 
-
-            print(f"✅ Created merged mask: {mask_key}")
-
         else:
             print(f"🔴 Not enough active masks to merge: {len(active_items)} active out of {len(hit_masks)} total")
             return
@@ -337,10 +337,8 @@ class ImageViewer(QGraphicsView):
         connected_mask_ids = set()
         for m in hit_masks:
             mask_id = self.get_mask_id(m.name, m.label)
-            print(f"Checking mask item: {m}, mask_id: {mask_id}")
             if mask_id in self.mask_id_to_group:
                 connected_mask_ids.add(mask_id)
-        print('connected mask ids', connected_mask_ids)
 
         if len(connected_mask_ids) == len(hit_masks):
             group_ids = [self.mask_id_to_group[mid] for mid in connected_mask_ids]
@@ -364,7 +362,6 @@ class ImageViewer(QGraphicsView):
 
         # === Connection logic ===
         groups = [self.mask_id_to_group[mid] for mid in mask_ids if mid in self.mask_id_to_group]
-        print("groups", groups)
         seen = set()
         unique_groups = []
         for group in groups:
@@ -372,8 +369,7 @@ class ImageViewer(QGraphicsView):
             if group_id not in seen:
                 seen.add(group_id)
                 unique_groups.append(group)
-        print('seen', seen)
-        print('unique groups', unique_groups)
+
         merged_mask_ids = set(mask_ids)
         merged_items = list(hit_masks)
         merged_color = merged_items[0].default_color
@@ -383,14 +379,12 @@ class ImageViewer(QGraphicsView):
                 merged_mask_ids.update(group["mask_ids"])
                 merged_items.extend(self.get_items_by_ids(group["mask_ids"]))
                 self.connected_groups.remove(group)
-        print("merged_mask_ids", merged_mask_ids)
         new_group = {
             "mask_ids": merged_mask_ids,
             "color": merged_color,
             'mask': merged_mask
         }
         self.connected_groups.append(new_group)
-        print("connected grioups", self.connected_groups)
 
         for mid in merged_mask_ids:
             print(f"  Adding {mid} to mask_id_to_group")
@@ -419,7 +413,6 @@ class ImageViewer(QGraphicsView):
 
     def get_item_by_id(self, mask_id):
         for item in self.mask_items:
-            print("item", item)
             if self.get_mask_id(item.name, item.label) == mask_id:
                 return item
         return None
@@ -431,7 +424,6 @@ class ImageViewer(QGraphicsView):
         return f"{name}_{label}"
 
     def disconnect_mask(self, mask_id):
-        print(f"Attempting to disconnect {mask_id}")
         group = self.mask_id_to_group.get(mask_id)
         if not group:
             print("Not in a group.")
@@ -455,10 +447,7 @@ class ImageViewer(QGraphicsView):
         if merged_key in self.callback_dict:
             del self.callback_dict[merged_key]
         if merged_key in self.new_mask_dict:
-            print(f"🗑️ Removing merged entry from new_mask_dict: {merged_key}")
             del self.new_mask_dict[merged_key]
-        print("Trying to delete merged_key:", merged_key)
-        print("Keys in new_mask_dict:", list(self.new_mask_dict.keys()))
 
         for remaining_id in group["mask_ids"]:
             item = self.get_item_by_id(remaining_id)
@@ -533,7 +522,6 @@ class ImageViewer(QGraphicsView):
         self.viewport().update()
 
     def disconnect_group(self, group):
-        print(f"🔄 Disconnecting full group with mask_ids: {group['mask_ids']}")
 
         # Generate merged key (before group is dissolved)
         label_names = sorted(
@@ -548,7 +536,6 @@ class ImageViewer(QGraphicsView):
         if merged_key in self.callback_dict:
             del self.callback_dict[merged_key]
         if merged_key in self.new_mask_dict:
-            print(f"🗑️ Removing merged entry from new_mask_dict: {merged_key}")
             del self.new_mask_dict[merged_key]
         
 
@@ -584,10 +571,6 @@ class ImageViewer(QGraphicsView):
         
         self.scene().update()
         self.viewport().update()
-
-
-
-
 
 
 
@@ -651,16 +634,24 @@ class ImageViewer(QGraphicsView):
             mask_item = ClickableMask(
                 scaled_pixmap, name, label, self.mask_click_callback, binary_mask=mask,
                 connection_mode_getter=self.is_connection_mode,
-                viewer=self  # pass the viewer
+                viewer=self
             )
 
-            mask_item.default_color = color # <-- store original color
-
-
+            # Store original color and add to scene
+            mask_item.default_color = color
             mask_item.setZValue(1)
             mask_item.setPos(0, 0)
             self.graphics_scene.addItem(mask_item)
             self.mask_items.append(mask_item)
+
+            # ✅ Save individual mask to new_mask_dict
+            if key not in self.new_mask_dict:
+                self.new_mask_dict[key] = {
+                    "mask": mask,
+                    "source": "individual",
+                    "image_name": name,
+                    "label_group": label
+                }
 
             if show_labels:
                 y_coords, x_coords = np.nonzero(mask)
