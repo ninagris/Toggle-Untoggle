@@ -17,6 +17,11 @@ from skimage import measure
 from cellpose import models
 from functools import partial
 from PIL import Image
+import matplotlib.pyplot as plt
+pd.set_option('display.max_rows', None)     # show all rows
+pd.set_option('display.max_columns', None)  # show all columns
+pd.set_option('display.width', None)        # no line wrapping
+pd.set_option('display.max_colwidth', None) # show full column content
 
 from supplement import open_folder, image_preprocessing, analyze_segmented_cells, convert_to_pixmap, normalize_to_uint8, pixel_conversion, compute_region_properties
 from toggle import ImageViewer
@@ -1032,13 +1037,13 @@ class ImageProcessingApp(QMainWindow):
 
         save_rois = self.roi_checkbox.isChecked()
         save_csv = self.single_cell_checkbox.isChecked()
-        correct_props_df, excluded_props_df = self.filter_active_props(save_rois)
+        correct_props_df, excluded_props_df = self.filter_active_props()
         if save_csv:
             self.save_props_to_csv(correct_props_df, excluded_props_df)
         if save_rois:
             self.save_rois_to_zip(correct_props_df)
 
-    def filter_active_props(self, add_roi_name=False):
+    def filter_active_props(self):
         all_props_df = self.worker.all_props_df.copy()
         all_props_df['combined_key'] = all_props_df['image_name'].astype(str) + '_' + all_props_df['label'].astype(str)
 
@@ -1062,22 +1067,8 @@ class ImageProcessingApp(QMainWindow):
             lambda r: f"{r['image_name']}_{r['label']}" in inactive_keys, axis=1
         )]
 
-        if add_roi_name:
-            correct_df['roi_name'] = correct_df.apply(
-                lambda r: f"{os.path.splitext(str(r['image_name']))[0]}_label{str(r['label'])}.roi"
-                if pd.notnull(r['image_name']) and pd.notnull(r['label']) else "",
-                axis=1
-            )
-            excluded['roi_name'] = excluded.apply(
-                lambda r: f"{os.path.splitext(str(r['image_name']))[0]}_label{str(r['label'])}.roi"
-                if pd.notnull(r['image_name']) and pd.notnull(r['label']) else "",
-                axis=1
-            )
 
         return correct_df, excluded
-
-
-
 
 
     
@@ -1102,12 +1093,17 @@ class ImageProcessingApp(QMainWindow):
 
         # === Step 2: Combine all active + newly merged/drawn/disconnected ===
         combined_df, excluded_df = self.integrate_new_objects(correct_df, active_keys, inactive_keys)
+        if self.roi_checkbox.isChecked():
+            combined_df = self.add_roi_name_column(combined_df)
+            excluded_df = self.add_roi_name_column(excluded_df)
 
+     
         output_dir = self.images_folder_path.text()
         output_csv = os.path.join(output_dir, self.csv_file_name.text() + '.csv')
         combined_df.to_csv(output_csv, index=False)
 
         excluded_csv = os.path.join(output_dir, 'excluded_objects.csv')
+  
         if not excluded_df.empty:
             excluded_df.to_csv(excluded_csv, index=False)
         else:
@@ -1115,7 +1111,6 @@ class ImageProcessingApp(QMainWindow):
                 os.remove(excluded_csv)
 
 
-    
     def save_rois_to_zip(self, correct_df):
         """
         Converts segmentation masks into ROI files and packages them into ZIP archives.
@@ -1155,14 +1150,12 @@ class ImageProcessingApp(QMainWindow):
             label = row['label']
             label_str = str(label)
             mask_key = f"{image_name}_{label_str}"
-            print("mask key.....:", mask_key)
 
             mask = None
 
             # === 1. Try to get mask from viewer.new_mask_dict (merged masks) ===
             for viewer in self.gray_viewers:
                 if mask_key in viewer.new_mask_dict:
-                    print("✅ Retrieved from new_mask_dict:", mask_key)
                     mask = viewer.new_mask_dict[mask_key]["mask"]
                     break
 
@@ -1175,11 +1168,9 @@ class ImageProcessingApp(QMainWindow):
                         # Try direct mask in callback
                         if "mask" in cb_data:
                             mask = cb_data["mask"]
-                            print(f"✅ Retrieved mask from viewer.callback_dict for {mask_key}")
                             break
                         elif "binary_mask" in cb_data:
                             mask = cb_data["binary_mask"]
-                            print(f"✅ Retrieved binary_mask from viewer.callback_dict for {mask_key}")
                             break
                         else:
                             # Reconstruct from label_mask using cb_data
@@ -1189,15 +1180,12 @@ class ImageProcessingApp(QMainWindow):
                             if image_name_cb in self.worker.masks_dict:
                                 label_mask = self.worker.masks_dict[image_name_cb]["label_mask"]
                                 mask = (label_mask == int(label_cb)).astype(np.uint8)
-                                print(f"✅ Reconstructed mask from label_mask for {mask_key}")
                                 break
 
             # === 3. Skip if mask still not found or empty ===
             if mask is None:
-                print(f"⚠️ No mask found for {mask_key}")
                 continue
             if np.sum(mask) == 0:
-                print(f"⚠️ Empty mask for {mask_key}")
                 continue
 
             # === 4. Assign label value
@@ -1208,7 +1196,6 @@ class ImageProcessingApp(QMainWindow):
                     label_value = int(label)
                 except (ValueError, TypeError):
                     label_value = 2000 + len(label_map) + 1
-                    print(f"Assigned non-integer label {label_str} to value {label_value}")
 
             label_map[mask_key] = label_value
 
@@ -1218,9 +1205,51 @@ class ImageProcessingApp(QMainWindow):
                 image_masks_dict[image_name] = np.zeros(shape, dtype=np.uint16)
 
             image_masks_dict[image_name][mask > 0] = label_value
-            print(f"✅ Stored mask for {mask_key} as label {label_value}")
+        
 
 
+        # Step 6: Generate ROI files for each image
+        
+        for image_name, full_mask in image_masks_dict.items():
+            rotated_mask = np.rot90(np.flipud(full_mask), k=-1)
+            roi_list = []
+
+            labels = []
+            for key in label_map:
+                if key.startswith(image_name + "_"):
+                    labels.append(key[len(image_name)+1:])
+
+
+            for label in labels:
+                mask_key = f"{image_name}_{label}"
+                label_value = label_map.get(mask_key)
+            
+                if label_value is None:
+                    continue
+
+                binary_mask = (rotated_mask == label_value).astype(np.uint8)
+               
+                contours = measure.find_contours(binary_mask, 0.5)
+        
+
+                for contour in contours:
+                    contour = np.round(contour).astype(np.int32)
+                    if contour.shape[0] < 10:
+                        continue
+                    roi = roifile.ImagejRoi.frompoints(contour)
+                    roi_filename = f"{os.path.splitext(image_name)[0]}_label{label}{'_merged' if '(' in label else ''}.roi"
+                    roi_list.append((roi_filename, roi))
+
+                    # Step 7: Save ROIs to ZIP file
+                    zip_path = os.path.join(roi_dir, f"{os.path.splitext(image_name)[0]}.zip")
+                    if roi_list:  # Check if roi_list is non-empty
+                        if os.path.exists(zip_path):
+                            os.remove(zip_path)
+                        with zipfile.ZipFile(zip_path, 'w') as zipf:
+                            for roi_filename, roi in roi_list:
+                                zipf.writestr(roi_filename, roi.tobytes())
+                    else:
+                        print(f"No ROIs generated for {image_name}")
 
 
 
@@ -1240,14 +1269,11 @@ class ImageProcessingApp(QMainWindow):
                 label_value = label_map.get(mask_key)
             
                 if label_value is None:
-                    print(f"⚠️ Missing label_value for {mask_key} in label_map.")
                     continue
 
                 binary_mask = (rotated_mask == label_value).astype(np.uint8)
-                print(f"Generating ROI for {mask_key}, label_value: {label_value}, unique values in binary_mask: {np.unique(binary_mask)}")
-
+               
                 contours = measure.find_contours(binary_mask, 0.5)
-                print(f"Found {len(contours)} contours for {mask_key}")
 
                 for contour in contours:
                     contour = np.round(contour).astype(np.int32)
@@ -1265,7 +1291,6 @@ class ImageProcessingApp(QMainWindow):
                         with zipfile.ZipFile(zip_path, 'w') as zipf:
                             for roi_filename, roi in roi_list:
                                 zipf.writestr(roi_filename, roi.tobytes())
-                        print(f"Saved {len(roi_list)} ROIs to {zip_path}")
                     else:
                         print(f"No ROIs generated for {image_name}")
 
@@ -1292,36 +1317,37 @@ class ImageProcessingApp(QMainWindow):
         # --- Step 3: Add merged group masks ---
         for viewer in self.gray_viewers:
             for group in self.get_merged_groups(viewer):
-                valid_items = [
-                    viewer.get_item_by_id(mid)
-                    for mid in group["mask_ids"]
-                    if viewer.get_item_by_id(mid) and not viewer.get_item_by_id(mid).is_inactive
-                ]
+                group_items = [
+                viewer.get_item_by_id(mid)
+                for mid in group["mask_ids"]
+                if viewer.get_item_by_id(mid)
+            ]
 
-                if not valid_items:
-                    continue
+                if not group_items:
+                    continue  # Still skip if nothing was found at all
 
-                image_name = valid_items[0].name
-                labels = sorted(str(item.label) for item in valid_items)
+                image_name = group_items[0].name
+                labels = sorted(str(item.label) for item in group_items)
                 merged_label_str = f"({','.join(labels)})"
                 merged_key = f"{image_name}_{merged_label_str}"
 
-                # Add individual mask keys to merged_keys to exclude them later
-                for item in valid_items:
+                # Add individual mask keys to merged_keys
+                for item in group_items:
                     merged_keys.add(f"{image_name}_{item.label}")
 
-                # Determine if the merged mask is active based on ALL constituent masks being active
-                is_active = all(f"{image_name}_{item.label}" in active_keys for item in valid_items)
+                # Determine activity based on constituent masks
+                is_active = all(f"{image_name}_{item.label}" in active_keys for item in group_items)
 
-                # Update callback_dict and active/inactive keys
+                # Update callback_dict
                 viewer.callback_dict[merged_key] = {"is_active": is_active}
                 if is_active:
                     active_keys.add(merged_key)
                 else:
                     inactive_keys.add(merged_key)
 
+                # Build merged mask regardless of activity
                 merged_mask = np.zeros(self.worker.image_shape, dtype=np.uint8)
-                for item in valid_items:
+                for item in group_items:
                     merged_mask[item.binary_mask > 0] = 1
 
                 viewer.new_mask_dict[merged_key] = {
@@ -1332,21 +1358,21 @@ class ImageProcessingApp(QMainWindow):
                 }
                 self.worker.masks_dict[merged_key] = {"mask": merged_mask}
 
+                # Compute properties
                 intensity_image = self.worker.image_dict.get(image_name)
                 df_props = compute_region_properties(merged_mask, intensity_image=intensity_image)
-                df_props['label'] = merged_label_str
+
+                # Overwrite label properly
+                df_props['label'] = [merged_label_str] * len(df_props)
                 df_props['image_name'] = image_name
                 df_props['Replicate'] = self.condition_name.text()
                 df_props['Condition'] = self.rep_num.text()
 
-                if hasattr(self, "roi_folder_name") and self.roi_folder_name.text():
-                    df_props['roi_name'] = f"{os.path.splitext(image_name)[0]}_label_{'_'.join(labels)}_merged.roi"
-
-                # Check if merged mask is active using callback_dict
-                # is_active = viewer.callback_dict.get(merged_key, {}).get("is_active", False)
+                # Save to new or excluded
                 if is_active:
                     new_rows.append(df_props)
                 else:
+                    df_props = pixel_conversion(df_props, float(self.pixel_rate.text()))
                     excluded_rows.append(df_props)
 
         # --- Step 4: Add disconnected (ungrouped) masks ---
@@ -1376,13 +1402,12 @@ class ImageProcessingApp(QMainWindow):
                 df_props['Replicate'] = self.condition_name.text()
                 df_props['Condition'] = self.rep_num.text()
 
-       
-    
 
-                if hasattr(self, "roi_folder_name") and self.roi_folder_name.text():
-                    df_props['roi_name'] = f"{os.path.splitext(image_name)[0]}_label_{label}_disconnected.roi"
+                if self.roi_checkbox.isChecked():  # or your actual checkbox variable
+                    df_props = self.add_roi_name_column(df_props, is_merged=True)  # or is_disconnected=True or False depending on case
 
                 new_rows.append(df_props)
+
 
         # --- Step 5: Update all_props_df with new rows ---
         if new_rows:
@@ -1402,6 +1427,7 @@ class ImageProcessingApp(QMainWindow):
             ]
 
             combined_df = pd.concat([correct_df, new_df], ignore_index=True)
+          
         else:
             combined_df = correct_df.copy()
 
@@ -1433,66 +1459,45 @@ class ImageProcessingApp(QMainWindow):
                     for lbl in sorted_labels:
                         group_map[(image_name, lbl)] = group_label
 
-        def resolve_label(row):
-            return group_map.get((row['image_name'], str(row['label'])), row['label'])
+        merged_individual_keys = set(group_map.keys())
 
-        combined_df['label'] = combined_df.apply(resolve_label, axis=1)
+        # Drop rows from combined_df if they correspond to any individual label that was merged
+        combined_df = combined_df[
+            ~combined_df.apply(lambda r: (r['image_name'], str(r['label'])) in merged_individual_keys, axis=1)
+        ]
+        # Do the same for excluded_df (if it's not empty)
         if not excluded_df.empty:
-            excluded_df['label'] = excluded_df.apply(resolve_label, axis=1)
+            excluded_df = excluded_df[
+                ~excluded_df.apply(
+                    lambda r: (str(r['image_name']), str(r['label']).strip()) in merged_individual_keys,
+                    axis=1
+                )
+            ]
 
-        # --- Step 8: Final deduplication ---
+        #--- Step 8: Final deduplication ---
         combined_df = combined_df.drop_duplicates(subset=['image_name', 'label'])
         if not excluded_df.empty:
             excluded_df = excluded_df.drop_duplicates(subset=['image_name', 'label'])
 
         return combined_df, excluded_df
 
+    def add_roi_name_column(self, df, is_merged=False, is_disconnected=False):
+        def generate_name(row):
+            base = os.path.splitext(str(row['image_name']))[0]
+            label = str(row['label'])
+            if is_merged:
+                return f"{base}_label_{label}_merged.roi"
+            elif is_disconnected:
+                return f"{base}_label_{label}_disconnected.roi"
+            else:
+                return f"{base}_label{label}.roi"
 
-        # # Drawn masks
-        # for idx, viewer in enumerate(self.gray_viewers):
-        #     items = viewer.mask_items
-        #     image_name = items[0].name if items else f"viewer_{idx}"
-
-        #     canvas = viewer.drawing_canvas.toImage()
-        #     width, height = canvas.width(), canvas.height()
-        #     ptr = canvas.bits()
-        #     ptr.setsize(height * width * 4)
-        #     arr = np.array(ptr).reshape((height, width, 4))
-        #     alpha_channel = (arr[..., 3] >= 128).astype(np.uint8) * 255
-
-        #     contours, _ = cv2.findContours(alpha_channel, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        #     drawn_mask_all = np.zeros((height, width), dtype=np.uint8)
-
-        #     min_area = 10
-        #     for i, contour in enumerate(contours, start=1):
-        #         if cv2.contourArea(contour) >= min_area:
-        #             cv2.drawContours(drawn_mask_all, [contour], -1, color=i, thickness=-1)
-
-        #     labeled_mask = drawn_mask_all
-        #     props = measure.regionprops(labeled_mask)
-
-        #     for prop in props:
-        #         region_mask = (labeled_mask == prop.label).astype(np.uint8)
-        #         drawn_mask_key = f"drawn_canvas_drawn_{prop.label}"
-
-        #         viewer.new_mask_dict[drawn_mask_key] = {
-        #             "mask": region_mask,
-        #             "source": "draw",
-        #             "image_name": image_name
-        #         }
-        #         self.worker.masks_dict[drawn_mask_key] = {"mask": region_mask}
-
-        #         df_drawn_props = compute_region_properties(region_mask)
-        #         df_drawn_props['image_name'] = image_name
-        #         df_drawn_props['label'] = label
-        #         df_drawn_props['Replicate'] = self.condition_name.text()
-        #         df_drawn_props['Condition'] = self.rep_num.text()
-
-        #         if hasattr(self, "roi_folder_name") and self.roi_folder_name.text():
-        #             df_drawn_props['roi_name'] = f"{image_name}_drawn_{prop.label}.roi"
-
-        #         new_rows.append(df_drawn_props)
-
+        df['roi_name'] = df.apply(
+            lambda r: generate_name(r)
+            if pd.notnull(r['image_name']) and pd.notnull(r['label']) else "",
+            axis=1
+        )
+        return df
  
 
     def get_merged_groups(self, viewer):

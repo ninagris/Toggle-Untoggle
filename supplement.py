@@ -208,38 +208,52 @@ def normalize_to_uint8(array):
     array = (array / array.max() * 255).astype(np.uint8)
     return array
 
-def compute_region_properties(mask, intensity_image=None):
-    props_to_measure = [
-        'label',
-        'area',
-        'bbox_area',
-        'area_convex',
-        'perimeter',
-        'eccentricity',
-        'extent',
-        'major_axis_length',
-        'minor_axis_length',
-        'equivalent_diameter_area',
-        'feret_diameter_max',
-        'orientation',
-        'perimeter_crofton',
-        'solidity',
-        'centroid'
-    ]
-    mask = mask.astype(np.uint8)
+def compute_region_properties(binary_mask, intensity_image=None):
+    """
+    Computes merged object properties by aggregating over all connected regions.
+    Returns a single-row DataFrame with aggregate properties.
+    """
+    labeled_mask = measure.label(binary_mask.astype(np.uint8))
+    props = measure.regionprops(labeled_mask, intensity_image=intensity_image)
+
+    if not props:
+        return pd.DataFrame()
+
+    total_area = sum(p.area for p in props)
+    if total_area == 0:
+        return pd.DataFrame()
+
+    # Helper: weighted average for scalar attrs
+    weighted_scalar = lambda attr: sum(p.area * getattr(p, attr) for p in props) / total_area
+
+    # Helper: weighted average for (y, x) centroid
+    centroid_y = sum(p.area * p.centroid[0] for p in props) / total_area
+    centroid_x = sum(p.area * p.centroid[1] for p in props) / total_area
+
+    result = {
+        'label': 1,
+        'area': total_area,
+        'bbox_area': sum((p.bbox[2] - p.bbox[0]) * (p.bbox[3] - p.bbox[1]) for p in props),
+        'area_convex': sum(p.convex_area for p in props),
+        'perimeter': sum(p.perimeter for p in props),
+        'eccentricity': weighted_scalar('eccentricity'),
+        'extent': weighted_scalar('extent'),
+        'major_axis_length': weighted_scalar('major_axis_length'),
+        'minor_axis_length': weighted_scalar('minor_axis_length'),
+        'equivalent_diameter_area': weighted_scalar('equivalent_diameter'),
+        'feret_diameter_max': max(p.feret_diameter_max for p in props),
+        'orientation': weighted_scalar('orientation'),
+        'perimeter_crofton': sum(p.perimeter_crofton for p in props),
+        'solidity': weighted_scalar('solidity'),
+        'centroid_y': centroid_y,
+        'centroid_x': centroid_x,
+    }
+
     if intensity_image is not None:
-        props_to_measure += [
-            'mean_intensity',
-            'max_intensity',
-            'min_intensity',
-        ]
+        result['mean_intensity'] = np.mean([p.mean_intensity for p in props])
+        result['max_intensity'] = max(p.max_intensity for p in props)
+        result['min_intensity'] = min(p.min_intensity for p in props)
 
-    props = measure.regionprops_table(
-        mask,
-        intensity_image=intensity_image,
-        properties=props_to_measure
-    )
-    df = pd.DataFrame(props)
-    df.rename(columns={"centroid-0": "centroid_y", "centroid-1": "centroid_x"}, inplace=True)
+    return pd.DataFrame([result])
 
-    return df
+

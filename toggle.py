@@ -6,7 +6,8 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPen, QPainter
 from PyQt6.QtWidgets import QGraphicsPathItem
 from PyQt6.QtGui import QPainterPath
-from PyQt6.QtWidgets import QMessageBox
+
+from skimage import measure
 
 class ClickableMask(QGraphicsPixmapItem):
     """
@@ -306,6 +307,7 @@ class ImageViewer(QGraphicsView):
 
             for item in active_items:
                 merged_mask[item.binary_mask > 0] = 1
+                relabeled_mask = measure.label(merged_mask)
                 label_names.append(str(item.label))
 
             label_names = sorted(label_names)
@@ -327,7 +329,6 @@ class ImageViewer(QGraphicsView):
             }
 
         else:
-            print(f"🔴 Not enough active masks to merge: {len(active_items)} active out of {len(hit_masks)} total")
             return
 
         
@@ -343,7 +344,6 @@ class ImageViewer(QGraphicsView):
         if len(connected_mask_ids) == len(hit_masks):
             group_ids = [self.mask_id_to_group[mid] for mid in connected_mask_ids]
             if len(set(map(id, group_ids))) > 1:
-                print("Not all masks are in the same group; can't disconnect.")
                 return
 
             print("Auto-disconnecting group")
@@ -387,9 +387,7 @@ class ImageViewer(QGraphicsView):
         self.connected_groups.append(new_group)
 
         for mid in merged_mask_ids:
-            print(f"  Adding {mid} to mask_id_to_group")
             self.mask_id_to_group[mid] = new_group
-        print("mask_id_to_group keys now:", list(self.mask_id_to_group.keys()))
 
         for item in active_items:
             self.recolor_mask(item, merged_color)
@@ -477,7 +475,6 @@ class ImageViewer(QGraphicsView):
     
         # Step 2: If group has < 2 remaining → dissolve it fully
         if len(group["mask_ids"]) < 2:
-            print("🧹 Group has less than 2 items → dissolving group")
             self.connected_groups.remove(group)
 
             for remaining_id in list(group["mask_ids"]):  # even if it's just 1
@@ -514,7 +511,6 @@ class ImageViewer(QGraphicsView):
 
         # Step 3: Refresh scene
         if merged_key in self.new_mask_dict:
-            print(f"🧼 Removing merged key from self.new_mask_dict: {merged_key}")
             del self.new_mask_dict[merged_key]
         if group in self.connected_groups:
             self.connected_groups.remove(group)
