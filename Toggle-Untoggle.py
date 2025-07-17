@@ -7,6 +7,7 @@ import roifile
 import zipfile
 import cv2
 import os
+import shutil
 from PyQt6.QtWidgets import QApplication, QLabel, QPushButton, QFormLayout, QSpinBox, QFileDialog
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QMainWindow
 from PyQt6.QtWidgets import QTabWidget, QLineEdit, QScrollArea, QComboBox
@@ -1138,6 +1139,12 @@ class ImageProcessingApp(QMainWindow):
 
         # Step 4: Create ROI directory and prepare image masks
         roi_dir = os.path.join(self.images_folder_path.text(), self.roi_folder_name.text())
+
+        # ✅ Delete existing ROI folder if it exists
+        if os.path.exists(roi_dir):
+            shutil.rmtree(roi_dir)
+
+        # Then create a fresh directory
         os.makedirs(roi_dir, exist_ok=True)
         image_masks_dict = {}
 
@@ -1150,6 +1157,7 @@ class ImageProcessingApp(QMainWindow):
             label = row['label']
             label_str = str(label)
             mask_key = f"{image_name}_{label_str}"
+            
 
             mask = None
 
@@ -1189,7 +1197,9 @@ class ImageProcessingApp(QMainWindow):
                 continue
 
             # === 4. Assign label value
-            if '(' in label_str:
+            if label_str.startswith("drawn_"):
+                label_value = 3000 + len(label_map) + 1
+            elif '(' in label_str:
                 label_value = 1000 + len(label_map) + 1
             else:
                 try:
@@ -1197,12 +1207,21 @@ class ImageProcessingApp(QMainWindow):
                 except (ValueError, TypeError):
                     label_value = 2000 + len(label_map) + 1
 
+           
             label_map[mask_key] = label_value
 
             # === 5. Store mask
             if image_name not in image_masks_dict:
                 shape = self.worker.image_shape
                 image_masks_dict[image_name] = np.zeros(shape, dtype=np.uint16)
+
+            if image_name not in image_masks_dict:
+                    shape = self.worker.image_shape
+                    image_masks_dict[image_name] = np.zeros(shape, dtype=np.uint16)
+
+            # ✅ Resize if needed
+            if mask.shape != self.worker.image_shape:
+                mask = cv2.resize(mask, (self.worker.image_shape[1], self.worker.image_shape[0]), interpolation=cv2.INTER_NEAREST)
 
             image_masks_dict[image_name][mask > 0] = label_value
         
@@ -1237,7 +1256,12 @@ class ImageProcessingApp(QMainWindow):
                     if contour.shape[0] < 10:
                         continue
                     roi = roifile.ImagejRoi.frompoints(contour)
-                    roi_filename = f"{os.path.splitext(image_name)[0]}_label{label}{'_merged' if '(' in label else ''}.roi"
+                    if 'drawn' in label:
+                        roi_filename = f"{os.path.splitext(image_name)[0]}_label_{label}_drawn.roi"
+                    elif '(' in label:
+                        roi_filename = f"{os.path.splitext(image_name)[0]}_label_{label}_merged.roi"
+                    else:
+                        roi_filename = f"{os.path.splitext(image_name)[0]}_label{label}.roi"
                     roi_list.append((roi_filename, roi))
 
                     # Step 7: Save ROIs to ZIP file
@@ -1407,6 +1431,63 @@ class ImageProcessingApp(QMainWindow):
                     df_props = self.add_roi_name_column(df_props, is_merged=True)  # or is_disconnected=True or False depending on case
 
                 new_rows.append(df_props)
+        
+         # --- Step 5: Add drawn masks ---
+        for idx, viewer in enumerate(self.gray_viewers):
+            items = viewer.mask_items
+            image_name = items[0].name if items else f"viewer_{idx}"
+
+            canvas = viewer.drawing_canvas.toImage()
+            width, height = canvas.width(), canvas.height()
+            ptr = canvas.bits()
+            ptr.setsize(height * width * 4)
+            arr = np.array(ptr).reshape((height, width, 4))
+            alpha_channel = (arr[..., 3] >= 128).astype(np.uint8) * 255
+            # Morphological closing to close small gaps
+            kernel = np.ones((3, 3), np.uint8)  # You can increase kernel size if needed
+            alpha_channel_closed = cv2.morphologyEx(alpha_channel, cv2.MORPH_CLOSE, kernel)
+
+
+            contours, _ = cv2.findContours(alpha_channel_closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            drawn_mask_all = np.zeros((height, width), dtype=np.uint8)
+
+            min_area = 100
+            for i, contour in enumerate(contours, start=1):
+                if cv2.contourArea(contour) >= min_area:
+                    cv2.drawContours(drawn_mask_all, [contour], -1, color=i, thickness=-1)
+
+            labeled_mask = drawn_mask_all
+            props = measure.regionprops(labeled_mask)
+
+            for prop in props:
+                region_mask = (labeled_mask == prop.label).astype(np.uint8)
+                drawn_mask_key = f"{image_name}_drawn_{prop.label}"
+
+                viewer.new_mask_dict[drawn_mask_key] = {
+                    "mask": region_mask,
+                    "source": "draw",
+                    "image_name": image_name
+                }
+                self.worker.masks_dict[drawn_mask_key] = {"mask": region_mask}
+
+                viewer.callback_dict[drawn_mask_key] = {
+                    "name": image_name,
+                    "label": f"drawn_{prop.label}",
+                    "is_active": True,
+                    "merged": False
+                }
+
+                df_drawn_props = compute_region_properties(region_mask)
+                df_drawn_props['image_name'] = image_name
+                df_drawn_props['label'] = f"drawn_{prop.label}"
+                df_drawn_props['Replicate'] = self.condition_name.text()
+                df_drawn_props['Condition'] = self.rep_num.text()
+
+                if self.roi_checkbox.isChecked():
+                    df_drawn_props = self.add_roi_name_column(df_drawn_props)
+
+                new_rows.append(df_drawn_props)
+
 
 
         # --- Step 5: Update all_props_df with new rows ---
@@ -1463,8 +1544,13 @@ class ImageProcessingApp(QMainWindow):
 
         # Drop rows from combined_df if they correspond to any individual label that was merged
         combined_df = combined_df[
-            ~combined_df.apply(lambda r: (r['image_name'], str(r['label'])) in merged_individual_keys, axis=1)
+            ~combined_df.apply(
+                lambda r: (r['image_name'], str(r['label'])) in merged_individual_keys
+                if not str(r['label']).startswith("drawn_") else False,
+                axis=1
+            )
         ]
+
         # Do the same for excluded_df (if it's not empty)
         if not excluded_df.empty:
             excluded_df = excluded_df[
@@ -1489,6 +1575,8 @@ class ImageProcessingApp(QMainWindow):
                 return f"{base}_label_{label}_merged.roi"
             elif is_disconnected:
                 return f"{base}_label_{label}_disconnected.roi"
+            elif label.startswith("drawn_"):
+                return f"{base}_label_{label}_drawn.roi"
             else:
                 return f"{base}_label{label}.roi"
 
