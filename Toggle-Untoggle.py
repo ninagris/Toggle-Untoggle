@@ -1228,56 +1228,6 @@ class ImageProcessingApp(QMainWindow):
 
 
         # Step 6: Generate ROI files for each image
-        
-        for image_name, full_mask in image_masks_dict.items():
-            rotated_mask = np.rot90(np.flipud(full_mask), k=-1)
-            roi_list = []
-
-            labels = []
-            for key in label_map:
-                if key.startswith(image_name + "_"):
-                    labels.append(key[len(image_name)+1:])
-
-
-            for label in labels:
-                mask_key = f"{image_name}_{label}"
-                label_value = label_map.get(mask_key)
-            
-                if label_value is None:
-                    continue
-
-                binary_mask = (rotated_mask == label_value).astype(np.uint8)
-               
-                contours = measure.find_contours(binary_mask, 0.5)
-        
-
-                for contour in contours:
-                    contour = np.round(contour).astype(np.int32)
-                    if contour.shape[0] < 10:
-                        continue
-                    roi = roifile.ImagejRoi.frompoints(contour)
-                    if 'drawn' in label:
-                        roi_filename = f"{os.path.splitext(image_name)[0]}_label_{label}_drawn.roi"
-                    elif '(' in label:
-                        roi_filename = f"{os.path.splitext(image_name)[0]}_label_{label}_merged.roi"
-                    else:
-                        roi_filename = f"{os.path.splitext(image_name)[0]}_label{label}.roi"
-                    roi_list.append((roi_filename, roi))
-
-                    # Step 7: Save ROIs to ZIP file
-                    zip_path = os.path.join(roi_dir, f"{os.path.splitext(image_name)[0]}.zip")
-                    if roi_list:  # Check if roi_list is non-empty
-                        if os.path.exists(zip_path):
-                            os.remove(zip_path)
-                        with zipfile.ZipFile(zip_path, 'w') as zipf:
-                            for roi_filename, roi in roi_list:
-                                zipf.writestr(roi_filename, roi.tobytes())
-                    else:
-                        print(f"No ROIs generated for {image_name}")
-
-
-
-        # Step 6: Generate ROI files for each image
         for image_name, full_mask in image_masks_dict.items():
             rotated_mask = np.rot90(np.flipud(full_mask), k=-1)
             roi_list = []
@@ -1437,29 +1387,35 @@ class ImageProcessingApp(QMainWindow):
             items = viewer.mask_items
             image_name = items[0].name if items else f"viewer_{idx}"
 
+
             canvas = viewer.drawing_canvas.toImage()
             width, height = canvas.width(), canvas.height()
             ptr = canvas.bits()
             ptr.setsize(height * width * 4)
             arr = np.array(ptr).reshape((height, width, 4))
-            alpha_channel = (arr[..., 3] >= 128).astype(np.uint8) * 255
-            # Morphological closing to close small gaps
-            kernel = np.ones((3, 3), np.uint8)  # You can increase kernel size if needed
-            alpha_channel_closed = cv2.morphologyEx(alpha_channel, cv2.MORPH_CLOSE, kernel)
+
+            alpha = (arr[..., 3] >= 200).astype(np.uint8)
 
 
-            contours, _ = cv2.findContours(alpha_channel_closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            drawn_mask_all = np.zeros((height, width), dtype=np.uint8)
+            kernel_close = np.ones((11, 11), np.uint8)
+            closed = cv2.morphologyEx(alpha, cv2.MORPH_CLOSE, kernel_close) 
 
-            min_area = 100
-            for i, contour in enumerate(contours, start=1):
-                if cv2.contourArea(contour) >= min_area:
-                    cv2.drawContours(drawn_mask_all, [contour], -1, color=i, thickness=-1)
+            # === Step 2: Find contours on filled mask ===
+            contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-            labeled_mask = drawn_mask_all
+            # === Step 3: Fill contours ===
+            filled_mask = np.zeros_like(alpha, dtype=np.uint8)
+            cv2.drawContours(filled_mask, contours, -1, 1, thickness=-1)  # binary mask (1s)
+
+            # === Step 4: Label and filter regions ===
+            labeled_mask = measure.label(filled_mask)
             props = measure.regionprops(labeled_mask)
 
+            min_area = 100  # Filter out noise
             for prop in props:
+                if prop.area < min_area:
+                    continue
+
                 region_mask = (labeled_mask == prop.label).astype(np.uint8)
                 drawn_mask_key = f"{image_name}_drawn_{prop.label}"
 
@@ -1477,7 +1433,26 @@ class ImageProcessingApp(QMainWindow):
                     "merged": False
                 }
 
-                df_drawn_props = compute_region_properties(region_mask)
+                # === Get intensity image ===
+                intensity_image = self.worker.image_dict.get(image_name)
+
+               # Make sure intensity_image is grayscale
+                if intensity_image.ndim == 3:
+                    intensity_image = cv2.cvtColor(intensity_image, cv2.COLOR_RGB2GRAY)
+
+                # Resize the mask instead of the image
+                if region_mask.shape != intensity_image.shape:
+                    print(f"⚠️ Resizing region_mask from {region_mask.shape} to {intensity_image.shape}")
+                    region_mask = cv2.resize(
+                        region_mask,
+                        (intensity_image.shape[1], intensity_image.shape[0]),
+                        interpolation=cv2.INTER_NEAREST
+                        )
+
+                labeled_mask = measure.label(region_mask)
+                df_drawn_props = compute_region_properties(labeled_mask, intensity_image=intensity_image)
+               
+
                 df_drawn_props['image_name'] = image_name
                 df_drawn_props['label'] = f"drawn_{prop.label}"
                 df_drawn_props['Replicate'] = self.condition_name.text()
@@ -1487,8 +1462,6 @@ class ImageProcessingApp(QMainWindow):
                     df_drawn_props = self.add_roi_name_column(df_drawn_props)
 
                 new_rows.append(df_drawn_props)
-
-
 
         # --- Step 5: Update all_props_df with new rows ---
         if new_rows:
