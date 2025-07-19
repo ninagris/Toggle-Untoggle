@@ -8,24 +8,21 @@ import zipfile
 import cv2
 import os
 import shutil
+
+from skimage import measure
+from cellpose import models
+from functools import partial
+from PIL import Image
+
 from PyQt6.QtWidgets import QApplication, QLabel, QPushButton, QFormLayout, QSpinBox, QFileDialog
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QMainWindow
 from PyQt6.QtWidgets import QTabWidget, QLineEdit, QScrollArea, QComboBox
 from PyQt6.QtWidgets import QGridLayout, QSizePolicy, QStyleFactory, QTextEdit, QProgressBar, QSlider, QCheckBox
 from PyQt6.QtGui import QPixmap, QImage, QFont, QIcon
 from PyQt6.QtCore import Qt, pyqtSignal, QThread, QTimer, QPoint, QSize
-from skimage import measure
-from cellpose import models
-from functools import partial
-from PIL import Image
-import matplotlib.pyplot as plt
-pd.set_option('display.max_rows', None)     # show all rows
-pd.set_option('display.max_columns', None)  # show all columns
-pd.set_option('display.width', None)        # no line wrapping
-pd.set_option('display.max_colwidth', None) # show full column content
 
 from supplement import open_folder, image_preprocessing, analyze_segmented_cells, convert_to_pixmap, normalize_to_uint8, pixel_conversion, compute_region_properties
-from toggle import ImageViewer
+from toggle import ImageViewer, ViewerModeController
 
 class ModelSelectorWidget(QWidget):
     model_changed = pyqtSignal(str, str)  # emits (model_type, custom_model_path)
@@ -213,7 +210,7 @@ class ImageProcessingApp(QMainWindow):
         self.resize(850, 700)
         self.setMinimumSize(850, 700)
         self.showFullScreen()
-        
+        self.viewer_mode_controller = ViewerModeController()
         # Main tab widget With tabs on top
         self.tabs = QTabWidget()
         self.tabs.setTabPosition(QTabWidget.TabPosition.North)
@@ -290,11 +287,7 @@ class ImageProcessingApp(QMainWindow):
             mode = 'erase'
 
         if mode:
-            for viewer in self.gray_viewers:
-                viewer.set_mode(mode)
-            print(f"Switched all to {mode} mode")
-
-
+            self.viewer_mode_controller.set_mode(mode)  
     
     def handle_model_selection(self, model_type: str, custom_path: str):
 
@@ -303,12 +296,10 @@ class ImageProcessingApp(QMainWindow):
 
         try:
             if model_type == "" and not custom_path.strip():
-                print("[MODEL] Empty custom path for custom model — blocking.")
                 raise ValueError("Please input a valid path to the custom model.")
 
             if custom_path:
                 if not os.path.exists(custom_path):
-                    print(f"[MODEL] Custom model path doesn't exist: {custom_path}")
                     raise ValueError("Custom model path does not exist.")
                 self.model = models.CellposeModel(gpu=True, pretrained_model=custom_path)
 
@@ -325,12 +316,6 @@ class ImageProcessingApp(QMainWindow):
             print(f"[MODEL] Model loading failed: {e}")
             raise
 
-
-
-
-
-
-    
     def create_slider(self, default_value, font_input):
         """
         Sliders for controlling pixel intensity params
@@ -395,9 +380,6 @@ class ImageProcessingApp(QMainWindow):
 
         self.help_text.move(help_x, help_y)
 
-
-
-                
     def get_help_text(self):
         """
         Return formatted help text
@@ -602,7 +584,6 @@ class ImageProcessingApp(QMainWindow):
         layout.setAlignment(top_right_container, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
 
         self.model_selector_widget = ModelSelectorWidget(font_input)
-
 
         # Input Fields
         self.images_folder_path = QLineEdit("/Users/ninagrishencko/Desktop/test_img")
@@ -1005,7 +986,6 @@ class ImageProcessingApp(QMainWindow):
         checkbox_row.addWidget(self.drawing_checkbox)
         checkbox_row.addWidget(self.erase_checkbox)
 
-        # ✅ Wrap row in a widget to control alignment inside main layout
         checkbox_container = QWidget()
         checkbox_container.setLayout(checkbox_row)
         checkbox_container.setFixedHeight(60)
@@ -1015,7 +995,6 @@ class ImageProcessingApp(QMainWindow):
         layout.addWidget(self.progress_bar)  # Adding progress bar below the scroll area
      
         images_tab.setLayout(layout)
-
 
         # Ensuring the layout is cleared before returning it
         self.clear_layout(image_layout)
@@ -1067,10 +1046,7 @@ class ImageProcessingApp(QMainWindow):
         excluded = all_props_df[all_props_df.apply(
             lambda r: f"{r['image_name']}_{r['label']}" in inactive_keys, axis=1
         )]
-
-
         return correct_df, excluded
-
 
     
     def save_props_to_csv(self, correct_df, excluded_df):
@@ -1136,7 +1112,6 @@ class ImageProcessingApp(QMainWindow):
                 axis=1
             )
         ]
-
         # Step 4: Create ROI directory and prepare image masks
         roi_dir = os.path.join(self.images_folder_path.text(), self.roi_folder_name.text())
 
@@ -1224,9 +1199,7 @@ class ImageProcessingApp(QMainWindow):
                 mask = cv2.resize(mask, (self.worker.image_shape[1], self.worker.image_shape[0]), interpolation=cv2.INTER_NEAREST)
 
             image_masks_dict[image_name][mask > 0] = label_value
-        
-
-
+    
         # Step 6: Generate ROI files for each image
         for image_name, full_mask in image_masks_dict.items():
             rotated_mask = np.rot90(np.flipud(full_mask), k=-1)
@@ -1432,7 +1405,6 @@ class ImageProcessingApp(QMainWindow):
                     "is_active": True,
                     "merged": False
                 }
-
                 # === Get intensity image ===
                 intensity_image = self.worker.image_dict.get(image_name)
 
@@ -1442,7 +1414,6 @@ class ImageProcessingApp(QMainWindow):
 
                 # Resize the mask instead of the image
                 if region_mask.shape != intensity_image.shape:
-                    print(f"⚠️ Resizing region_mask from {region_mask.shape} to {intensity_image.shape}")
                     region_mask = cv2.resize(
                         region_mask,
                         (intensity_image.shape[1], intensity_image.shape[0]),
@@ -1484,7 +1455,6 @@ class ImageProcessingApp(QMainWindow):
           
         else:
             combined_df = correct_df.copy()
-
 
         # --- Step 6: Construct excluded_df for inactive masks ---
         excluded_df = all_props_df[
@@ -1560,7 +1530,6 @@ class ImageProcessingApp(QMainWindow):
         )
         return df
  
-
     def get_merged_groups(self, viewer):
         """
         Return list of unique active groups based on `connected_groups` only.
@@ -1578,7 +1547,6 @@ class ImageProcessingApp(QMainWindow):
             grouped.append(group_copy)
 
         return grouped
-
 
     def show_save_all(self):
         self.image_layout.addWidget(self.button_widget)
@@ -1656,9 +1624,6 @@ class ImageProcessingApp(QMainWindow):
             self.worker.show_save_all.connect(self.show_save_all)
             self.worker.finished_processing.connect(self.processing_done)
             self.worker.progress_updated.connect(self.update_progress)
-
-
-
             # Starting the worker in the background
             self.worker.start()
             
@@ -1711,9 +1676,10 @@ class ImageProcessingApp(QMainWindow):
         show_labels = self.cell_labels_checkbox.isChecked()
         font_size = self.cell_label_font_size_spinbox.value()
         # Using the scaled gray image in ImageViewer
-        self.gray_viewer = ImageViewer(scaled_pixmap_gray, masks_list, font_size, show_labels, title, worker=self.worker)
-
-
+        if not hasattr(self, "viewer_mode_controller"):
+            self.viewer_mode_controller = ViewerModeController()
+        controller = self.viewer_mode_controller    
+        self.gray_viewer = ImageViewer(scaled_pixmap_gray, masks_list, font_size, show_labels, title, worker=self.worker, mode_controller=controller)
 
         layout.addWidget(label_rgb)
         layout.addWidget(label_overlay)
@@ -1743,8 +1709,6 @@ class ImageProcessingApp(QMainWindow):
         if self.help_text.isVisible():
             self.help_text.setVisible(False)
 
-    
-    
     # Override function
     def closeEvent(self, event):
         """
@@ -1753,7 +1717,6 @@ class ImageProcessingApp(QMainWindow):
         if self.help_text.isVisible():
             self.help_text.setVisible(False)  # Close help window before closing main window
         event.accept()  # Proceed with closing the main window
-
 
 class ImageProcessingWorker(QThread):
     
@@ -1807,8 +1770,6 @@ class ImageProcessingWorker(QThread):
         if not self.active:  # Stop processing if active flag is false
             return
         
-
-        
         # Checking if the folder path is empty or invalid
         if not self.folder_path or not os.path.isdir(self.folder_path):
             self.status_update.emit("Invalid folder path!")
@@ -1840,9 +1801,6 @@ class ImageProcessingWorker(QThread):
             self.status_update.emit("Invalid pixel-to-micron conversion rate!")
             self.finished_processing.emit() 
             return
-        
-        
-
         
         # Ensuring 'self.images' is defined and contains the expected data
         if not hasattr(self, 'images') or not self.images:
@@ -1882,10 +1840,6 @@ class ImageProcessingWorker(QThread):
                     
                     nucleus_image_path = self.images[nucleus_name]
  
-
-               
-               
-
                 if self.active:
                     try:
                         # Processing images
@@ -1977,7 +1931,6 @@ class ImageProcessingWorker(QThread):
             self.status_update.emit("No images processed. Please check your input parameters.")
             self.finished_processing.emit() 
  
-
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setStyle(QStyleFactory.create("Fusion"))

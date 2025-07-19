@@ -1,13 +1,31 @@
 import numpy as np
-import cv2
-from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsTextItem
-from PyQt6.QtGui import QPixmap, QImage, QColor, QFont
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPen, QPainter
-from PyQt6.QtWidgets import QGraphicsPathItem
-from PyQt6.QtGui import QPainterPath
 
-from skimage import measure
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsTextItem, QGraphicsPathItem
+from PyQt6.QtGui import QPixmap, QImage, QColor, QFont, QPen, QPainter, QPainterPath
+
+
+class ViewerModeController:
+    def __init__(self):
+        self._mode = "toggle"  # Set a default mode
+        self.viewers = []
+
+    def register_viewer(self, viewer):
+        self.viewers.append(viewer)
+        viewer.set_mode(self._mode)  # Always sets the current mode
+        viewer.mode_check_enabled = True
+
+    def set_mode(self, new_mode):
+        self._mode = new_mode
+        for viewer in self.viewers:
+            viewer.set_mode(new_mode)
+
+    def get_mode(self):
+        return self._mode
+    
+    def sync_all_viewers(self):
+        for viewer in self.viewers:
+            viewer.set_mode(self._mode)
 
 class ClickableMask(QGraphicsPixmapItem):
     """
@@ -29,53 +47,47 @@ class ClickableMask(QGraphicsPixmapItem):
         self.viewer = viewer
 
     def mousePressEvent(self, event):
-        print(f"Mouse press in {self.name}_{self.label}, viewer mode: {self.viewer.mode}, connection_mode_getter: {self.connection_mode_getter()}")
+        if not self.viewer.mode_check_enabled:
+            event.ignore()
+            return
+        viewer_mode = self.viewer.mode
+        connection_mode = self.connection_mode_getter()
 
-        # Check both connection_mode_getter and viewer.mode to ensure consistency
-        if self.connection_mode_getter() or self.viewer.mode != "toggle":
+        # Only allow toggle interaction when viewer mode is explicitly "toggle" and not connect/draw/erase
+        if viewer_mode != "toggle" or connection_mode:
             event.ignore()
             return
 
-
-        if self.viewer.mode == "toggle":
+        # Proceed only in toggle mode
+        if viewer_mode == "toggle":
             # Use group toggle if in group
             mask_id = self.viewer.get_mask_id(self.name, self.label)
             group = self.viewer.mask_id_to_group.get(mask_id)
 
             if group:
-                # Determine new state from current item
                 turning_off = self.opacity() == self.viewer.active_opacity
                 merged_key = self.viewer.generate_merged_key(self.name, group["mask_ids"])
-                
-                # Update callback_dict for the merged mask
+
                 self.viewer.callback_dict[merged_key] = {
                     "name": self.name,
-                    "label": merged_key.split('_', 1)[1],  # Extract the merged label
+                    "label": merged_key.split('_', 1)[1],
                     "is_active": not turning_off,
                     "merged": True
                 }
 
-                # Update individual masks in the group
                 for mid in group["mask_ids"]:
                     item = self.viewer.get_item_by_id(mid)
                     if item:
                         item.setOpacity(self.viewer.inactive_opacity if turning_off else self.viewer.active_opacity)
                         item.is_inactive = turning_off
-                        # Remove or mark individual masks as inactive in callback_dict
                         individual_key = f"{item.name}_{item.label}"
-                        if turning_off:
-                            if individual_key in self.viewer.callback_dict:
-                                self.viewer.callback_dict[individual_key]["is_active"] = False
-                        else:
-                            if individual_key in self.viewer.callback_dict:
-                                self.viewer.callback_dict[individual_key]["is_active"] = True
+                        if individual_key in self.viewer.callback_dict:
+                            self.viewer.callback_dict[individual_key]["is_active"] = not turning_off
 
                 if turning_off and merged_key in self.viewer.new_mask_dict:
-                    print(f"🗑️ Toggled OFF — removing {merged_key} from new_mask_dict")
                     del self.viewer.new_mask_dict[merged_key]
 
             else:
-                # Fallback: toggle just self
                 turning_off = self.opacity() == self.viewer.active_opacity
                 self.setOpacity(self.viewer.inactive_opacity if turning_off else self.viewer.active_opacity)
                 self.is_inactive = turning_off
@@ -83,25 +95,29 @@ class ClickableMask(QGraphicsPixmapItem):
 
             event.accept()
 
-        
 
 class ImageViewer(QGraphicsView):
-    def __init__(self, pixmap, masks, font_size, show_labels=False, colors=None, image_name=None, worker=None):
+    def __init__(self, pixmap, masks, font_size, show_labels=False, colors=None, image_name=None, worker=None, mode_controller=None):
         super().__init__()
-
+        self.mode_controller = mode_controller  
+        self.mode = "toggle"
+        if self.mode_controller:
+            self.mode_controller.register_viewer(self)
+        else:
+            self.set_mode("toggle")
+        self.connection_mode = self.mode == "connect"
+        self.disconnect_mode = self.mode == "connect"
+        self.drawing = self.mode == "draw"
         self.callback_dict = {} # Collect callback functions for each mask
-        self.connection_mode = False
-        self.disconnect_mode = False  # Explicitly initialize
         self.mouse_path = []
         self.connection_line = None
         self.original_masks = masks
+       
         self.connected_groups = []  # each group is a dict: {'mask_ids': set, 'color': tuple, 'star_item': QGraphicsTextItem}
         self.mask_id_to_group = {}  # for quick lookup: mask_id -> group dict
         self.disconnect_mode = False
-        self.mode = "toggle"  # default mode
         self.new_mask_dict = {}
         self.correction_action = "connect"  # or "disconnect", depending on your UI
-        self.drawing = False
         self.last_draw_point = None
         self.image_name = image_name
         self.drawing_canvas = QPixmap(pixmap.size())
@@ -112,7 +128,7 @@ class ImageViewer(QGraphicsView):
         self.inactive_opacity = 0.2
         self.worker = worker
         self.pre_merge_callback_state = {}
-        self.set_mode("toggle")
+
 
         # Disable scroll bars
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -142,23 +158,17 @@ class ImageViewer(QGraphicsView):
         return  f"{name}({','.join(labels)})"
    
   
-    
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_C:
-            self.set_mode("connect")
+            self.mode_controller.set_mode("connect")
             self.correction_action = "connect"
-            print("Switched to connect mode → CONNECT")
 
         elif event.key() == Qt.Key.Key_D:
-            self.set_mode("connect")
+            self.mode_controller.set_mode("connect")
             self.correction_action = "disconnect"
-            print("Switched to connect mode → DISCONNECT")
 
         elif event.key() == Qt.Key.Key_T:
-            self.set_mode("toggle")
-            print("Switched to TOGGLE mode")
-
-
+            self.mode_controller.set_mode("toggle")
 
     def is_connection_mode(self):
         return self.connection_mode
@@ -202,39 +212,43 @@ class ImageViewer(QGraphicsView):
             event.accept()
 
         elif self.mode == "draw" and self.drawing:
-            painter = QPainter(self.drawing_canvas)
-            pen = QPen(QColor("red"), 3, Qt.PenStyle.SolidLine)
-            painter.setPen(pen)
             current_point = self.mapToScene(event.position().toPoint())
-            painter.drawLine(self.last_draw_point, current_point)
-            painter.end()
 
-            self.drawing_item.setPixmap(self.drawing_canvas)
-            self.last_draw_point = current_point
+            if self.last_draw_point is not None:  # ✅ Only draw if there is a valid previous point
+                painter = QPainter(self.drawing_canvas)
+                pen = QPen(QColor("red"), 3, Qt.PenStyle.SolidLine)
+                painter.setPen(pen)
+                painter.drawLine(self.last_draw_point, current_point)
+                painter.end()
+
+                self.drawing_item.setPixmap(self.drawing_canvas)
+
+            self.last_draw_point = current_point  # ✅ Update last point regardless
             event.accept()
+
 
         elif self.mode == "erase" and self.drawing:
-            painter = QPainter(self.drawing_canvas)
-            # Set composition mode to clear to erase
-            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
-            eraser_size = 30  # or any size you want
-            pen = QPen(QColor(0, 0, 0, 0), eraser_size)
-            painter.setPen(pen)
             current_point = self.mapToScene(event.position().toPoint())
-            painter.drawLine(self.last_draw_point, current_point)
-            painter.end()
 
-            self.drawing_item.setPixmap(self.drawing_canvas)
+            if self.last_draw_point is not None:
+                painter = QPainter(self.drawing_canvas)
+                painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+                eraser_size = 30
+                pen = QPen(QColor(0, 0, 0, 0), eraser_size)
+                painter.setPen(pen)
+                painter.drawLine(self.last_draw_point, current_point)
+                painter.end()
+
+                self.drawing_item.setPixmap(self.drawing_canvas)
+
             self.last_draw_point = current_point
             event.accept()
-
         else:
             super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
 
         if self.mode == "connect" and event.button() == Qt.MouseButton.LeftButton:
-            print(f"Mouse released in connect mode, action: {self.correction_action}")
             self.mouse_path.append(self.mapToScene(event.position().toPoint()))
             self.handle_mouse_path()
             self.mouse_path = []
@@ -249,8 +263,6 @@ class ImageViewer(QGraphicsView):
 
         else:
             super().mouseReleaseEvent(event)
-
-
 
     def extract_color_from_pixmap(self, pixmap):
         image = pixmap.toImage()
@@ -272,8 +284,6 @@ class ImageViewer(QGraphicsView):
         self.mode = mode
         self.connection_mode = (mode == "connect")
         self.disconnect_mode = (mode == "connect")
-        print(f"Mode switched to {mode}")
-
 
     def is_connection_mode(self):
         # Only connection mode active if in connect mode
@@ -307,7 +317,6 @@ class ImageViewer(QGraphicsView):
 
             for item in active_items:
                 merged_mask[item.binary_mask > 0] = 1
-                relabeled_mask = measure.label(merged_mask)
                 label_names.append(str(item.label))
 
             label_names = sorted(label_names)
@@ -331,8 +340,6 @@ class ImageViewer(QGraphicsView):
         else:
             return
 
-        
-
         mask_ids = {self.get_mask_id(m.name, m.label) for m in active_items}
         merged_mask_ids = set(mask_ids)  # define it here early
         connected_mask_ids = set()
@@ -345,20 +352,15 @@ class ImageViewer(QGraphicsView):
             group_ids = [self.mask_id_to_group[mid] for mid in connected_mask_ids]
             if len(set(map(id, group_ids))) > 1:
                 return
-
-            print("Auto-disconnecting group")
           
 
             group = self.mask_id_to_group.get(next(iter(connected_mask_ids)))
             if group:
                 self.disconnect_group(group)
-
-
             return
         else:
             # Not all masks are connected —> proceed to connect
             print("Auto-connecting masks")
-
 
         # === Connection logic ===
         groups = [self.mask_id_to_group[mid] for mid in mask_ids if mid in self.mask_id_to_group]
@@ -407,8 +409,6 @@ class ImageViewer(QGraphicsView):
                     "merged": False
                 }
 
-
-
     def get_item_by_id(self, mask_id):
         for item in self.mask_items:
             if self.get_mask_id(item.name, item.label) == mask_id:
@@ -424,13 +424,11 @@ class ImageViewer(QGraphicsView):
     def disconnect_mask(self, mask_id):
         group = self.mask_id_to_group.get(mask_id)
         if not group:
-            print("Not in a group.")
             return
 
         # ✅ Now group is always defined beyond this point
         disconnected_item = self.get_item_by_id(mask_id)
         if disconnected_item is None:
-            print(f"⚠️ No item found for {mask_id}")
             return
 
         label_names = sorted(
@@ -461,7 +459,6 @@ class ImageViewer(QGraphicsView):
                 "merged": False
             }
 
-
             self.new_mask_dict[key] = {
                 "mask": item.binary_mask,
                 "source": "disconnect",
@@ -469,10 +466,8 @@ class ImageViewer(QGraphicsView):
                 "label_group": [str(item.label)],
             }
 
-
         self.connected_groups = [g for g in self.connected_groups if g != group]
  
-    
         # Step 2: If group has < 2 remaining → dissolve it fully
         if len(group["mask_ids"]) < 2:
             self.connected_groups.remove(group)
@@ -485,7 +480,6 @@ class ImageViewer(QGraphicsView):
                     item.setOpacity(self.active_opacity)
                     item.is_inactive = False
 
-                    # 🔴 This may be missing:
                     if remaining_id in self.mask_id_to_group:
                         del self.mask_id_to_group[remaining_id]
 
@@ -518,7 +512,6 @@ class ImageViewer(QGraphicsView):
         self.viewport().update()
 
     def disconnect_group(self, group):
-
         # Generate merged key (before group is dissolved)
         label_names = sorted(
             str(self.get_item_by_id(mid).label)
@@ -528,7 +521,6 @@ class ImageViewer(QGraphicsView):
         name = next(iter(group["mask_ids"])).split("_")[0]  # crude way to extract name
         merged_key = f"{name}_({','.join(label_names)})"
 
-   
         if merged_key in self.callback_dict:
             del self.callback_dict[merged_key]
         if merged_key in self.new_mask_dict:
@@ -568,9 +560,6 @@ class ImageViewer(QGraphicsView):
         self.scene().update()
         self.viewport().update()
 
-
-
-
     def recolor_mask(self, mask_item_to_update, color):
         for mask_data in self.original_masks:
             if mask_data["image_name"] == mask_item_to_update.name and mask_data["label"] == mask_item_to_update.label:
@@ -587,8 +576,6 @@ class ImageViewer(QGraphicsView):
 
                 mask_item_to_update.setPixmap(scaled_pixmap)
                 return
-
-
 
     def set_togglable_masks(self, masks, colors, pixmap, font_size, show_labels=False):
         """
@@ -640,7 +627,6 @@ class ImageViewer(QGraphicsView):
             self.graphics_scene.addItem(mask_item)
             self.mask_items.append(mask_item)
 
-            # ✅ Save individual mask to new_mask_dict
             if key not in self.new_mask_dict:
                 self.new_mask_dict[key] = {
                     "mask": mask,

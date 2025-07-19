@@ -4,11 +4,12 @@ import cv2
 import os
 import warnings
 
-from PyQt6.QtGui import QPixmap, QImage
 from PIL import Image
 from skimage import measure, segmentation
 from skimage.segmentation import find_boundaries
 from skimage.morphology import dilation, disk
+
+from PyQt6.QtGui import QPixmap, QImage
 
 warnings.filterwarnings("ignore")
 def delete_dot_underscore_files(directory):
