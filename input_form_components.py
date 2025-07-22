@@ -678,8 +678,15 @@ class InputFormWidget(QWidget):
 
             "<b>17. Segmentation Channel Intensity Threshold:</b> Minimum fluorescence intensity required for a pixel to be included in segmentation. Increase if empty images are segmented.<br><br>"
 
-            "<b>18. Pixel-to-Micron Ratio:</b> The conversion factor from pixels to microns (depends on your microscope setup).<br>"
+            "<b>18. Pixel-to-Micron Ratio:</b> The conversion factor from pixels to microns (depends on your microscope setup).<br><br>"
+
+
+            "<b>• Toggle:</b> This is the default mode. It allows the user to remove incorrect masks from the analysis. Removed masks are stored temporarily in memory and can be toggled back while the application is still running.<br>"
+            "<b>• Connect:</b> This mode allows the user to connect or disconnect neighboring objects (unlimited number) using a mouse stroke. Masks can be connected and disconnected multiple times while the application is still running.<br>"
+            "<b>• Draw:</b> This mode allows the user to draw masks for cells that were not segmented by Cellpose. The drawn shapes should be as enclosed as possible. Small gaps in the outlines will likely be closed automatically, but larger gaps may lead to incorrect measurements of morphological properties.<br>"
+            "<b>• Erase:</b> This mode allows the user to erase the drawn outlines.<br>"
         )
+
 
 
    
