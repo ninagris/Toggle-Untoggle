@@ -11,193 +11,17 @@ import shutil
 
 from skimage import measure
 from cellpose import models
-from functools import partial
 from PIL import Image
 
-from PyQt6.QtWidgets import QApplication, QLabel, QPushButton, QFormLayout, QSpinBox, QFileDialog
+from PyQt6.QtWidgets import QApplication, QLabel, QPushButton
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QMainWindow
-from PyQt6.QtWidgets import QTabWidget, QLineEdit, QScrollArea, QComboBox
-from PyQt6.QtWidgets import QGridLayout, QSizePolicy, QStyleFactory, QTextEdit, QProgressBar, QSlider, QCheckBox
+from PyQt6.QtWidgets import QTabWidget, QScrollArea, QSizePolicy, QStyleFactory, QCheckBox
 from PyQt6.QtGui import QPixmap, QImage, QFont, QIcon
-from PyQt6.QtCore import Qt, pyqtSignal, QThread, QTimer, QPoint, QSize
+from PyQt6.QtCore import Qt, pyqtSignal, QThread, QTimer,QSize
 
-from supplement import open_folder, image_preprocessing, analyze_segmented_cells, convert_to_pixmap, normalize_to_uint8, pixel_conversion, compute_region_properties
+from image_analysis_pipeline import open_folder, image_preprocessing, analyze_segmented_cells, convert_to_pixmap, normalize_to_uint8, pixel_conversion, compute_region_properties
 from toggle import ImageViewer, ViewerModeController
-
-class ModelSelectorWidget(QWidget):
-    model_changed = pyqtSignal(str, str)  # emits (model_type, custom_model_path)
-
-    def __init__(self, font):
-        super().__init__()
-
-        self.model_type = "cyto3"
-        self.custom_model_path = None
-        self.setMinimumHeight(25)  # Match QLineEdit height
-        self.setMaximumHeight(40)
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-
-
-        # Dropdown menu
-        self.model_dropdown = QComboBox()
-        self.model_dropdown.addItems(["cyto3", "nuclei", "custom model"])
-        self.model_dropdown.setCurrentText("cyto3")
-        self.model_dropdown.setFont(font)
-        self.model_dropdown.setMinimumHeight(25)
-        self.model_dropdown.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.model_dropdown.setStyleSheet("""
-            QComboBox {
-                border: 1px solid gray;
-                border-radius: 1px;
-                padding: 1px 20px 1px 3px;  /* Adjust padding to make room for wider arrow */
-                min-width: 6em;
-                background-color: white;
-                selection-color:black;
-                selection-background-color: lightblue;
-            }
-            QComboBox:!editable, QComboBox::drop-down:editable {
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                            stop: 0 #FFFFFF, stop: 0.4 #FFFFFF,
-                                            stop: 0.5 ##FFFFFF, stop: 1.0 #FFFFFF);
-            }
-            /* When popup is open */
-            QComboBox:!editable:on, QComboBox::drop-down:editable:on {
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                            stop: 0 #FFFFFF, stop: 0.4 #FFFFFF,
-                                            stop: 0.5 #FFFFFF, stop: 1.0 #FFFFFF);
-            }                                          
-            /* Arrow inside dropdown */
-            QComboBox::down-arrow {
-                image: url(:/black_arrow.png);  /* Path to your arrow icon */
-                width: 20px;  /* Set arrow width to 20px */
-                height: 20px;  /* Optionally adjust arrow height */
-            }
-        """)
-        self.model_dropdown.currentTextChanged.connect(self.on_model_selection_changed)
-        dropdown_view = self.model_dropdown.view()
-        dropdown_view.setMinimumWidth(50)
-        dropdown_view.setMinimumHeight(30)
-        dropdown_view.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
-
-       
-
-        # Custom model path input
-        self.custom_model_input = QLineEdit()
-        self.custom_model_input.setPlaceholderText("Path to custom cellpose model")
-        self.custom_model_input.setFont(font)
-
-        self.browse_button = QPushButton("Browse")
-        self.browse_button.setFont(font)
-        self.browse_button.setMaximumSize(70, 40)
-        self.browse_button.clicked.connect(self.browse_custom_model)
-
-        # Custom model input layout
-        self.custom_model_container = QWidget()
-        custom_layout = QHBoxLayout(self.custom_model_container)
-        custom_layout.setContentsMargins(0, 0, 0, 0)
-        custom_layout.setSpacing(5)
-        custom_layout.addWidget(self.custom_model_input)
-        custom_layout.addWidget(self.browse_button)
-        self.custom_model_container.setVisible(False)
-
-        layout = QHBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
-        layout.addWidget(self.model_dropdown)
-        layout.addWidget(self.custom_model_container)
-        layout.setStretch(0, 1)  # dropdown gets 1 part
-        layout.setStretch(1, 3)  # input gets 3 parts
-        self.setLayout(layout)
-
-        self.model_dropdown.currentTextChanged.connect(self.on_model_selection_changed)
-
-
-
-    def on_model_selection_changed(self, selected_text):
-        is_custom = selected_text == "custom model"
-
-        # Show/hide the input field and enable/disable browse
-        self.custom_model_container.setVisible(is_custom)
-        self.custom_model_input.setEnabled(is_custom)
-        self.browse_button.setEnabled(is_custom)
-
-        # 🧼 Clear custom model path when switching away from "custom model"
-        if not is_custom:
-            self.custom_model_input.setText("")
-
-        self.emit_model_change()
-
-
-    def browse_custom_model(self):
-        file_dialog = QFileDialog(self, "Select Custom Model")
-        file_dialog.setFileMode(QFileDialog.FileMode.ExistingFile)
-        if file_dialog.exec():
-            selected_files = file_dialog.selectedFiles()
-            if selected_files:
-                self.custom_model_input.setText(selected_files[0])
-                self.emit_model_change()
-
-    def emit_model_change(self):
-        if self.model_dropdown.currentText() == "custom model":
-            model_type = ""
-            custom_path = self.custom_model_input.text()
-        else:
-            model_type = self.model_dropdown.currentText()
-            custom_path = ""
-
-        self.model_type = model_type
-        self.custom_model_path = custom_path
-        # You can emit the signal if needed by others, but do not connect it to model loading
-        self.model_changed.emit(model_type or "", custom_path or "")
-
-class DraggableTextEdit(QTextEdit):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._drag_active = False
-        self._drag_position = QPoint()
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_active = True
-            # Calculate offset between mouse click position and widget top-left corner
-            self._drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            event.accept()
-        else:
-            super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):
-        if self._drag_active and event.buttons() & Qt.MouseButton.LeftButton:
-            new_pos = event.globalPosition().toPoint() - self._drag_position
-
-            if self.parent():
-                parent_rect = self.parent().rect()
-                mapped_pos = self.parent().mapFromGlobal(new_pos)
-
-                help_width = self.width()
-                help_height = self.height()
-
-                # Calculate clamp bounds with margin (50 px)
-                max_x = max(parent_rect.width() - 400, 0)
-                max_y = max(parent_rect.height() - 200, 0)
-                min_x = -help_width + 50
-                min_y = -help_height + 50
-
-                x = max(min_x, min(mapped_pos.x(), max_x))
-                y = max(min_y, min(mapped_pos.y(), max_y))
-
-                new_pos = self.parent().mapToGlobal(QPoint(x, y))
-
-            self.move(new_pos)
-            event.accept()
-        else:
-            super().mouseMoveEvent(event)
-
-            
-    def mouseReleaseEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_active = False
-            event.accept()
-        else:
-            super().mouseReleaseEvent(event)
+from input_form_components import InputFormWidget, DraggableTextEdit
 
 class ImageProcessingApp(QMainWindow):
     def __init__(self):
@@ -245,21 +69,24 @@ class ImageProcessingApp(QMainWindow):
         self.github_link.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.github_link.setStyleSheet("padding-right: 15px;")
         self.tabs.setCornerWidget(self.github_link, Qt.Corner.TopRightCorner) # Adding the link to the top right corner of the tab bar
-
-
-
-        # Customizing Tab for the input parameters
-        self.input_tab = QWidget()
-        self.create_input_form()
-        self.tabs.addTab(self.input_tab, "Input Parameters")
-        # List for storing grayscale images with interactive masks
-        self.gray_viewers = []
         self.help_text = DraggableTextEdit(parent=self)
-        self.help_text.setText(self.get_help_text())
+        self.help_text.setVisible(False)
         font = QFont("Arial", 18) 
         self.help_text.setFont(font)
         self.help_text.setReadOnly(True)
-        self.help_text.setVisible(False) 
+        # Customizing Tab for the input parameters
+        self.input_tab = QWidget()       # Create the tab widget
+        self.input_tab.setLayout(QVBoxLayout())
+        self.input_form = InputFormWidget(parent=self.input_tab, help_text=self.help_text, tab_widget=self.tabs)
+        self.input_tab.layout().addWidget(self.input_form)
+        self.tabs.addTab(self.input_tab, "Input Parameters")
+        # List for storing grayscale images with interactive masks
+        self.gray_viewers = []
+        self.processing_in_progress = False
+        self.input_form.processClicked.connect(self.on_process_clicked)
+        self.input_form.saveClicked.connect(self.collect_all_callbacks)
+        self.images_tab = None  # Start without images tab
+        self.image_layout = None  # This will hold image layout
     
     def update_modes(self):
         mode = None  # Initialize mode
@@ -279,21 +106,18 @@ class ImageProcessingApp(QMainWindow):
             self.correction_checkbox.setChecked(False)
             self.erase_checkbox.setChecked(False)
             mode = 'draw'
-        
         elif sender == self.erase_checkbox and sender.isChecked():
             self.toggle_checkbox.setChecked(False)
             self.correction_checkbox.setChecked(False)
             self.drawing_checkbox.setChecked(False)
             mode = 'erase'
 
-        if mode:
-            self.viewer_mode_controller.set_mode(mode)  
+        self.viewer_mode_controller.set_mode(mode)  
     
     def handle_model_selection(self, model_type: str, custom_path: str):
 
         # Always clear the current model first
         self.model = None
-
         try:
             if model_type == "" and not custom_path.strip():
                 raise ValueError("Please input a valid path to the custom model.")
@@ -316,96 +140,6 @@ class ImageProcessingApp(QMainWindow):
             print(f"[MODEL] Model loading failed: {e}")
             raise
 
-    def create_slider(self, default_value, font_input):
-        """
-        Sliders for controlling pixel intensity params
-        """
-        label = QLabel(f"{default_value}")
-        slider = QSlider(Qt.Orientation.Horizontal)
-        slider.setMinimum(0)
-        slider.setMaximum(100)
-        slider.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        slider.setValue(default_value)
-        # Update label when slider moves
-        slider.valueChanged.connect(lambda value: label.setText(f"{value}"))
-        # Creating a horizontal layout to hold both the slider and the label
-        slider_layout = QHBoxLayout()
-        slider_layout.setContentsMargins(0, 0, 15, 0)
-        slider_layout.setSpacing(5)
-        slider_layout.addWidget(slider)  # Adding the slider
-        slider_layout.addWidget(label, 0, Qt.AlignmentFlag.AlignLeft)  # Adding the label to the right
-        # Setting font and styling for the label and slider
-        slider.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        label.setFont(font_input) 
-        label.setMinimumWidth(20)
-        label.setStyleSheet("""
-            QLabel {
-                font-size: 9px;
-                color: black;
-                padding-left: 15px;  # Adding a little space between slider and label
-            }
-        """)
-        slider.setMinimumWidth(80) 
-        slider.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        # Container for the layout
-        container = QWidget()
-        container.setLayout(slider_layout)
-        container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        return container, slider
-    
-    def toggle_help(self):
-        if self.help_text.isVisible():
-            self.help_text.hide()
-        else:
-            max_width = max(300, self.width() - 20)
-            max_height = max(150, self.height() - 20)
-            self.help_text.resize(min(800, max_width), min(500, max_height))
-            self.help_text.setMinimumSize(300, 150)
-            self.help_text.setAlignment(Qt.AlignmentFlag.AlignLeft)
-            self.help_text.show()
-            self.center_help_text()
-        
-    def center_help_text(self):
-        if not hasattr(self, 'help_text') or not self.help_text.isVisible():
-            return
-        parent = self.input_tab
-        parent_width = parent.width()
-        parent_height = parent.height()
-        help_width = self.help_text.width()
-        help_height = self.help_text.height()
-
-        help_x = (parent_width - help_width) // 2
-        help_y = (parent_height - help_height) // 2
-
-        self.help_text.move(help_x, help_y)
-
-    def get_help_text(self):
-        """
-        Return formatted help text
-        """
-        return (
-            "1. Images Folder Path: The path to the folder containing the images. Only single-channel images should be present in the folder. If multi-channel display images with the same file IDs are present, you may get no images processed notice.\n\n"  # Add extra newline
-            "2. Output File Name: Not a path, but the desired name for the output .csv file.\n\n"
-            "3. Condition: Additional column with the specified condition.\n\n"
-            "4. Replicate: Additional column with the replicate # specified.\n\n"
-            "5. Unique Actin File Identifier: A keyword unique to actin images (e.g., d2, ch1).\n\n"
-            "6. Unique Dapi File Identifier: A keyword unique to dapi images (e.g., d0, ch2).\n\n"
-            "7. Actin Channel Color: The color of the actin channel (choose from dropdown).\n\n"
-            "8. Lower Percentile for Segmentation Marker Channel: the lower percentile of pixel intensities for the segmentation marker image.Any intensity below this percentile is mapped to 0 (black). Contrast adjustments are there only for visualization purposes.Fluorescence intensity of original images is not modified, and all fluorescence data is extracted from raw images.\n\n"
-            "9. Upper Percentile for Segmentation Marker Channel: the upper percentile of pixel intensities for the segmentation marker image.Any intensity above this percentile is mapped to 1 (white).\n\n"
-            "10. Lower Percentile for Nucleus Channel: : the lower percentile of pixel intensities for the nucleus channel image.Any intensity below this percentile is mapped to 0 (black).\n\n"
-            "11. Upper Percentile for Nucleus Channel: the upper percentile of pixel intensities for the nucleus channel image.Any intensity above this percentile is mapped to 1 (white).\n\n"
-            "12. Average Cell Diameter: The typical cell diameter in microns.\n\n"
-            "13. Flow Threshold: the maximum allowed error of the flows for each mask. Increase this threshold if segmentation is not returning as many ROIs as you expect. Similarly, decrease this threshold if cellpose is returning too many incorrect masks.\n\n"
-            "14. Min Cell Area: The minimum area for a valid cell in microns.\n\n"
-            "15. Minimum Percentage of Image Occupied by Cells: Increase if empty images appear.\n\n"
-            "16. Actin Channel Intensity Threshold: Adjust to refine segmentation.\n\n"
-            "17. Minimum Percentage of Cell Area Occupied by Nucleus: Adjust for better segmentation.\n\n"
-            "18. Blue (DAPI) Pixel Threshold: Minimum fluorescence intensity for nucleus detection.\n\n"
-            "19. Pixel Conversion Rate: The conversion factor from pixels to microns, varies across microscopes. For EVOS: 20x: 0.354, 40x: 0.18, 60x: 0.12\n"
-        )
-    
     def resizeEvent(self, event):
         # Your aspect ratio code here (keep as is)
         current_size = self.size()
@@ -425,7 +159,7 @@ class ImageProcessingApp(QMainWindow):
 
         if hasattr(self, "help_text") and self.help_text.isVisible():
             # Defer centering so all layouts & sizes update first
-            QTimer.singleShot(0, self.center_help_text)
+            QTimer.singleShot(0, self.help_text.center_in_parent)
 
     def on_process_stop(self):
         """
@@ -433,14 +167,14 @@ class ImageProcessingApp(QMainWindow):
         """
         if self.worker is not None:
             self.worker.stop()  # Setting the abort flag to stop the worker
-            self.processing_label.setText("Stopping...")
+            self.input_form.processing_label.setText("Stopping...")
 
         if self.stop_button is not None:
             self.stop_button.setDisabled(True)  # Preventing accidental/multiple clicks
 
         if self.worker is None:
             # Enabling the process button again
-            self.process_button.setEnabled(True)
+            self.input_form.process_button.setEnabled(False)
             self.processing_in_progress = False
 
     def update_stop_button(self, count, button_layout):
@@ -468,7 +202,7 @@ class ImageProcessingApp(QMainWindow):
             button_layout.addWidget(self.stop_button)
             button_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
             self.stop_button.clicked.connect(self.on_process_stop)
-            self.process_button.setEnabled(False)
+            self.input_form.process_button.setEnabled(False)
 
     def on_process_clicked(self, button_layout):
         if self.processing_in_progress:
@@ -485,7 +219,7 @@ class ImageProcessingApp(QMainWindow):
 
         try:
             # Get the current values live from the widget
-            current_model_text = self.model_selector_widget.model_dropdown.currentText()
+            current_model_text = self.input_form.model_selector_widget.model_dropdown.currentText()
 
             if current_model_text == "custom model":
                 model_type = ""
@@ -502,12 +236,12 @@ class ImageProcessingApp(QMainWindow):
         except Exception as e:
             self.update_status_label(f"Model loading error: {str(e)}")
             self.processing_in_progress = False
-            self.process_button.setEnabled(True)
+            self.input_form.process_button.setEnabled(True)
             return
 
         self.processing_in_progress = True
-        self.processing_label.setText("Processing started...")
-        self.process_button.setEnabled(False)
+        self.input_form.processing_label.setText("Processing started...")
+        self.input_form.process_button.setEnabled(False)
         
         # Clearing the existing images tab before starting the processing
         self.stop_button = None 
@@ -525,351 +259,7 @@ class ImageProcessingApp(QMainWindow):
             )
 
             self.worker.finished.connect(lambda: self.stop_button.deleteLater() if hasattr(self, "stop_button") and self.stop_button else None)
-
-    def create_input_form(self):
-        """
-        Placeholder for images 
-        """
-        self.images_tab = None  # Start without images tab
-        self.image_layout = None  # This will hold image layout
-        main_layout = QVBoxLayout()  # Layout for aligning widgets to the left
-        scroll_field = QScrollArea()
-        scroll_field.setWidgetResizable(True) 
-        scroll_field.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-
-        # A widget that will contain all input elements
-        input_container = QWidget()
-        input_container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-
-        layout = QVBoxLayout()
-        layout.setContentsMargins(15, 5, 15, 5)
-        layout.setSpacing(5)  # controls spacing between each input row
-        input_container.setLayout(layout)
-        rows_layout = QVBoxLayout()
-        rows_layout.setSpacing(10)
-
-
-        # Grid layout for structuring input sections and their corresponding labels
-        grid_layout = QGridLayout()
-        grid_layout.setContentsMargins(5, 5, 0, 0)
-        grid_layout.setHorizontalSpacing(20)
-        grid_layout.setVerticalSpacing(5)
-        font_label = QFont("Arial", 18, QFont.Weight.Bold) # Font for the section labels
-        font_input = QFont("Arial", 18) # Font for the input sections
-        grid_layout.setColumnMinimumWidth(0, 100)  # Adjusting the minimum width for the first column (labels) 
-        grid_layout.setColumnStretch(0, 0)  # label column: no stretch
-        grid_layout.setColumnStretch(1, 1)  # input column: stretch to fill
-
-        # Customizing the help button
-        self.help_button = QPushButton("?")
-        self.help_button.setMinimumSize(30, 30)
-        self.help_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.help_button.setFont(font_label)
-        self.help_button.clicked.connect(self.toggle_help) # Connecting the button to a function that toggles help text visibility
-       
-
-        # Input fields with sliders
-        self.main_marker_low_contrast_widget, self.main_marker_low_contrast_slider = self.create_slider(15, font_input)
-        self.main_marker_high_contrast_widget, self.main_marker_high_contrast_slider = self.create_slider(99, font_input)
-        self.nucleus_low_contrast_widget, self.nucleus_low_contrast_slider = self.create_slider(15, font_input)
-        self.nucleus_high_contrast_widget, self.nucleus_high_contrast_slider = self.create_slider(99, font_input)
-
-        # Creating a widget for a help button
-        top_right_container = QWidget()
-        top_right_layout = QVBoxLayout(top_right_container)
-        top_right_layout.setContentsMargins(0, 0, 0, 0)  
-        top_right_layout.addStretch()  # Pushung button to the right
-        top_right_layout.addWidget(self.help_button)
-        layout.addWidget(top_right_container)
-        layout.setAlignment(top_right_container, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
-
-        self.model_selector_widget = ModelSelectorWidget(font_input)
-
-        # Input Fields
-        self.images_folder_path = QLineEdit("/Users/ninagrishencko/Desktop/test_img")
-        self.csv_file_name = QLineEdit("single_cell_morphology")
-        self.roi_folder_name = QLineEdit("ROIs")
-        self.condition_name = QLineEdit("r")
-        self.rep_num = QLineEdit("r")
-        self.unique_main_marker_identifier = QLineEdit("d2")
-        self.unique_nucleus_identifier = QLineEdit("")
-        self.diameter = QLineEdit("20")
-        self.flow_threshold = QLineEdit("0.4")
-        self.min_area = QLineEdit("150")
-        self.min_non_black_pixels_percentage = QLineEdit("10")
-        self.intensity_threshold = QLineEdit("70")
-        self.min_nucleus_pixels_percentage = QLineEdit("10")
-        self.nucleus_pixel_threshold = QLineEdit("200")
-        self.pixel_rate = QLineEdit("0.18") 
-
-        # Setting parameters for input fields
-        for input_field in [
-            self.images_folder_path, self.csv_file_name, self.roi_folder_name, self.condition_name, self.rep_num, 
-            self.unique_main_marker_identifier, self.unique_nucleus_identifier, self.diameter, self.flow_threshold,
-            self.min_area, self.min_non_black_pixels_percentage, self.intensity_threshold,
-            self.min_nucleus_pixels_percentage, self.nucleus_pixel_threshold, self.pixel_rate,
-            self.main_marker_low_contrast_widget, self.main_marker_high_contrast_widget,
-            self.nucleus_low_contrast_widget, self.nucleus_high_contrast_widget,
-        ]:
-            input_field.setFont(font_input)
-            input_field.setMinimumWidth(100)
-            input_field.setMinimumHeight(25)
-            input_field.setMaximumHeight(40)
-            input_field.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-            input_field.setStyleSheet("""
-            QLineEdit {
-                border: 1px solid gray;  /* Lighter gray border */
-                border-radius: 3px;
-                padding: 1px;
-            }
-        """)
-
-        # Customizing dropdown menu for the segmentation marker color
-        self.main_marker_channel_dropdown = QComboBox()
-        self.main_marker_channel_dropdown.addItem("")  # Empty item as placeholder
-        self.main_marker_channel_dropdown.addItems(["red", "green"])
-        self.main_marker_channel_dropdown.setFont(font_input)
-        self.main_marker_channel_dropdown.setMinimumWidth(100)  
-        self.main_marker_channel_dropdown.setMinimumHeight(25)  
-        self.main_marker_channel_dropdown.setMaximumHeight(40)
-        self.main_marker_channel_dropdown.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
-        self.main_marker_channel_dropdown.setStyleSheet("""
-            QComboBox {
-                border: 1px solid gray;
-                border-radius: 1px;
-                padding: 1px 20px 1px 3px;  /* Adjust padding to make room for wider arrow */
-                min-width: 6em;
-                background-color: white;
-                selection-color:black;
-                selection-background-color: lightblue;
-            }
-            QComboBox:!editable, QComboBox::drop-down:editable {
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                            stop: 0 #FFFFFF, stop: 0.4 #FFFFFF,
-                                            stop: 0.5 ##FFFFFF, stop: 1.0 #FFFFFF);
-            }
-            /* When popup is open */
-            QComboBox:!editable:on, QComboBox::drop-down:editable:on {
-                background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                            stop: 0 #FFFFFF, stop: 0.4 #FFFFFF,
-                                            stop: 0.5 #FFFFFF, stop: 1.0 #FFFFFF);
-            }                                          
-            /* Arrow inside dropdown */
-            QComboBox::down-arrow {
-                image: url(:/black_arrow.png);  /* Path to your arrow icon */
-                width: 20px;  /* Set arrow width to 20px */
-                height: 20px;  /* Optionally adjust arrow height */
-            }
-        """)
-     
-        # Creating a view for the dropdown menu
-        dropdown_view = self.main_marker_channel_dropdown.view()
-        dropdown_view.setMinimumWidth(100)
-        dropdown_view.setMinimumHeight(30)
-        dropdown_view.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
-
-        self.input_row_count = 1
-        form_layout = QFormLayout()
-        form_layout.setSpacing(10)
-        form_layout.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        form_layout.setFormAlignment(Qt.AlignmentFlag.AlignLeft)
-
-        def add_row(label_text, input_widget):
-            numbered_label = f"{self.input_row_count}. {label_text}"
-            self.input_row_count += 1
-
-            label = QLabel(numbered_label)
-            label.setFont(font_label)
-            label.setMinimumHeight(25)
-            label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-
-            input_widget.setMinimumHeight(25)
-            input_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-
-            form_layout.addRow(label, input_widget)
-
-        # Add all rows here in order
-        add_row("Images Folder Path:", self.images_folder_path)
-        add_row("Output File Name:", self.csv_file_name)
-        add_row("ROI Folder Name:", self.roi_folder_name)
-        add_row("Cellpose Model:", self.model_selector_widget)
-        add_row("Condition Name:", self.condition_name)
-        add_row("Replicate #:", self.rep_num)
-        add_row("Segmentation Channel File ID:", self.unique_main_marker_identifier)
-
-
-        # Cell Labels Checkbox
-        checkbox_cell_labels = QLabel(f"{self.input_row_count}. Display cell labels")
-        checkbox_cell_labels.setFont(font_label)
-        self.cell_labels_checkbox = QCheckBox()
-        self.cell_labels_checkbox.setStyleSheet("QCheckBox::indicator { width: 25px; height: 25px; }")
-        self.cell_label_font_size_spinbox = QSpinBox()
-        self.cell_label_font_size_spinbox.setRange(5, 30)
-        self.cell_label_font_size_spinbox.setValue(18)  # default value
-        self.cell_label_font_size_spinbox.setSuffix(" pt")
-        self.cell_label_font_size_spinbox.setVisible(False)  # hidden by default
-        font_spinbox = QFont("Arial", 18)
-        self.cell_label_font_size_spinbox.setFont(font_spinbox)
-        self.cell_label_font_size_spinbox.setMinimumHeight(25) 
-        self.cell_label_font_size_spinbox.setMaximumHeight(40)   # Adjust height as needed
-
-        # Horizontal layout to place checkbox + font size spinbox in one row
-        cell_label_layout = QHBoxLayout()
-        cell_label_layout.addWidget(self.cell_labels_checkbox)
-        cell_label_layout.addWidget(self.cell_label_font_size_spinbox)
-        # cell_label_layout.setSpacing(10)
-        cell_label_layout.setContentsMargins(0, 0, 0, 0)
-        cell_label_widget = QWidget()
-        cell_label_widget.setLayout(cell_label_layout)
-
-        # Add to the form layout
-        form_layout.addRow(checkbox_cell_labels, cell_label_widget)
-
-        # Toggle font size spinbox when checkbox is checked
-        self.cell_labels_checkbox.toggled.connect(self.cell_label_font_size_spinbox.setVisible)
-        self.input_row_count += 1
-                
-        # Nucleus checkbox
-        checkbox_label = QLabel(f"{self.input_row_count}. Nucleus channel present")
-        checkbox_label.setFont(font_label)
-        self.nucleus_checkbox = QCheckBox()
-        self.nucleus_checkbox.setStyleSheet("QCheckBox::indicator { width: 25px; height: 25px; }")
-
-        nucleus_checkbox_layout = QHBoxLayout()
-        nucleus_checkbox_layout.addWidget(self.nucleus_checkbox)
-        nucleus_checkbox_layout.setContentsMargins(0, 0, 0, 0)
-        nucleus_checkbox_layout.setSpacing(10)
-
-        nucleus_checkbox_widget = QWidget()
-        nucleus_checkbox_widget.setLayout(nucleus_checkbox_layout)
-
-        form_layout.addRow(checkbox_label, nucleus_checkbox_widget)
-        self.input_row_count += 1
-
-        self.nucleus_group_widget = QWidget()
-        nucleus_layout = QFormLayout(self.nucleus_group_widget)
-        nucleus_layout.setSpacing(10)
-        nucleus_layout.setContentsMargins(0, 0, 0, 0)
-        nucleus_layout.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-
-        def add_nucleus_row(label_text, input_widget):
-            label = QLabel(label_text)
-            label.setFont(font_label)
-            label.setMinimumHeight(25)
-            label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-            input_widget.setFont(font_input)
-            input_widget.setMinimumHeight(25)
-            input_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-            nucleus_layout.addRow(label, input_widget)
-
-
-        # Add all nucleus rows
-        add_nucleus_row("Nucleus Channel File ID:", self.unique_nucleus_identifier)
-        add_nucleus_row("Lower Percentile of Pixel Intensities for Nucleus Channel:", self.nucleus_low_contrast_widget)
-        add_nucleus_row("Upper Percentile of Pixel Intensities for Nucleus Channel:", self.nucleus_high_contrast_widget)
-        add_nucleus_row("Minimum Percentage of Cell Area Occupied by Nucleus:", self.min_nucleus_pixels_percentage)
-        add_nucleus_row("Nucleus Channel Intensity Threshold:", self.nucleus_pixel_threshold)
-
-        self.nucleus_group_widget.setVisible(False)
-        self.nucleus_checkbox.toggled.connect(self.nucleus_group_widget.setVisible)
-        form_layout.addRow(self.nucleus_group_widget)  # 👈 Add the whole block as a form row
-
-        # Add remaining fields
-        add_row("Segmentation Channel Color:", self.main_marker_channel_dropdown)
-        add_row("Lower Percentile of Pixel Intensities for Segmentation Marker Channel:", self.main_marker_low_contrast_widget)
-        add_row("Upper Percentile of Pixel Intensities for Segmentation Marker Channel:", self.main_marker_high_contrast_widget)
-        add_row("Average Cell Diameter (µm):", self.diameter)
-        add_row("Flow Threshold:", self.flow_threshold)
-        add_row("Min Cell Area (µm²):", self.min_area)
-        add_row("Minimum Percentage of Image Occupied by Cells:", self.min_non_black_pixels_percentage)
-        add_row("Segmentation Channel Intensity Threshold:", self.intensity_threshold)
-        add_row("Pixel-to-Micron Ratio:", self.pixel_rate)
-
-        # Attach form layout to the main layout
-        layout.addLayout(form_layout)
-                
-        # Customizing the start button
-        self.process_button = QPushButton("Process Images")
-        self.process_button.setFont(QFont("Arial", 25))
-        self.process_button.setMinimumSize(100, 40)
-        self.process_button.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
-
-        self.process_button.setStyleSheet("""
-            QPushButton {
-                font-size: 20pt;  /* Bigger font size */
-                padding: 5px;    /* Add padding around the text */
-                background-color: #ADD8E6; /* Light blue background */
-                color: black;     /* Black text */
-                border-radius: 5px; /* Rounded corners */
-                border: 1px solid #ddd; /* Border around button */
-            }
-            QPushButton:hover {
-                background-color: #87CEEB;  /* Slightly darker blue on hover */
-            }
-            QPushButton:pressed {
-                background-color: #4682B4;  /* Even darker blue when pressed */
-            }
-        """)
-        # layout.addWidget(self.process_button, Qt.AlignmentFlag.AlignLeft)
-        self.processing_label = QLabel("")
-        self.processing_label.setStyleSheet(
-            "color: green; font-size: 22px; font-weight: bold; padding-top: -20px;"
-        )
-        button_layout = QHBoxLayout()
-        button_layout.addWidget(self.process_button)
-        button_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        button_layout.setContentsMargins(5, 15, 15, 0)
-        layout.addLayout(button_layout)
-      
-        processing_layout = QHBoxLayout()
-        processing_layout.addWidget(self.processing_label)
     
-        self.processing_label.setMinimumHeight(40)
-        self.processing_label.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
-        processing_layout.setContentsMargins(5, 15, 15, 0)
-        layout.addLayout(processing_layout)  # Add layout to main layout
-        layout.addStretch()
-
-        # Progress bar settings
-        self.processing_in_progress = False
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setMinimum(0)
-        self.progress_bar.setValue(0)
-        self.progress_bar.setTextVisible(True)
-        self.progress_bar.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.progress_bar.setStyleSheet("""
-            QProgressBar {
-                border: 2px solid #ADD8E6;  /* Light blue border */
-                border-radius: 5px;
-                background-color: white;  /* Background color */
-                text-align: center;  /* Center align text */
-                font-size: 18pt;  /* Larger text */
-                color: black;  /* Black text */
-                padding: 3px;
-            }
-            QProgressBar::chunk {
-                background-color: lightblue; /* Light blue progress bar */
-                width: 10px;
-            }
-        """)
-
-        scroll_field.setWidget(input_container)
-        main_layout.addWidget(scroll_field)
-        self.process_button.clicked.connect(partial(self.on_process_clicked, button_layout))
-        # Add the vertical layout to the main layout
-        main_layout.addLayout(layout)
-        self.input_tab.setLayout(main_layout)
-    
-      
-    def clear_layout(self,layout):
-        """
-        Helper function to clear all widgets in a layout
-        """
-        while layout.count():
-            child = layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
-
     def create_images_tab(self):
         """
         Create a new tab for images
@@ -877,8 +267,6 @@ class ImageProcessingApp(QMainWindow):
         images_tab = QWidget()
         self.tabs.addTab(images_tab, "Processed Images")  # Add the new tab to the widget
         layout = QVBoxLayout()
-
-        # self.setLayout(layout)
         # Scrollable area for images
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
@@ -890,7 +278,6 @@ class ImageProcessingApp(QMainWindow):
        
         self.single_cell_checkbox = QCheckBox("Single-cell morphology")
         self.roi_checkbox = QCheckBox("ROIs")
-        
         self.single_cell_checkbox.setStyleSheet("""
             QCheckBox {
                 font-size: 18pt;  /* Adjust font size for the label */
@@ -901,7 +288,6 @@ class ImageProcessingApp(QMainWindow):
                 height: 25px;
             }
         """)
-
         self.roi_checkbox.setStyleSheet("""
             QCheckBox {
                 font-size: 18pt;  /* Adjust font size for the label */
@@ -912,7 +298,6 @@ class ImageProcessingApp(QMainWindow):
                 height: 25px;
             }
         """)
-
         # Creating save button
         self.save_button = QPushButton("Save")
         self.save_button.setMinimumSize(100, 40) 
@@ -979,8 +364,6 @@ class ImageProcessingApp(QMainWindow):
         self.correction_checkbox.stateChanged.connect(self.update_modes)
         self.drawing_checkbox.stateChanged.connect(self.update_modes)
         self.erase_checkbox.stateChanged.connect(self.update_modes)
-
-
         checkbox_row.addWidget(self.toggle_checkbox)
         checkbox_row.addWidget(self.correction_checkbox)
         checkbox_row.addWidget(self.drawing_checkbox)
@@ -992,22 +375,23 @@ class ImageProcessingApp(QMainWindow):
         layout.addWidget(checkbox_container, alignment=Qt.AlignmentFlag.AlignRight)
         layout.addLayout(checkbox_row)
         layout.addWidget(scroll_area)
-        layout.addWidget(self.progress_bar)  # Adding progress bar below the scroll area
-     
+        layout.addWidget(self.input_form.progress_bar)  # Adding progress bar below the scroll area
         images_tab.setLayout(layout)
-
         # Ensuring the layout is cleared before returning it
         self.clear_layout(image_layout)
-      
-
-        # Checkboxes
         self.images_tab = images_tab  # Updating the reference to the new tab
-        
         self.image_layout = image_layout 
 
         return image_layout 
-
-
+    
+    def clear_layout(self,layout):
+        """
+        Helper function to clear all widgets in a layout
+        """
+        while layout.count():
+            child = layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
     def collect_all_callbacks(self):
         """
         Main method to process mask callbacks and export data.
@@ -1075,8 +459,8 @@ class ImageProcessingApp(QMainWindow):
             excluded_df = self.add_roi_name_column(excluded_df)
 
      
-        output_dir = self.images_folder_path.text()
-        output_csv = os.path.join(output_dir, self.csv_file_name.text() + '.csv')
+        output_dir =self.input_form.images_folder_path.text()
+        output_csv = os.path.join(output_dir, self.input_form.csv_file_name.text() + '.csv')
         combined_df.to_csv(output_csv, index=False)
 
         excluded_csv = os.path.join(output_dir, 'excluded_objects.csv')
@@ -1113,7 +497,7 @@ class ImageProcessingApp(QMainWindow):
             )
         ]
         # Step 4: Create ROI directory and prepare image masks
-        roi_dir = os.path.join(self.images_folder_path.text(), self.roi_folder_name.text())
+        roi_dir = os.path.join(self.input_form.images_folder_path.text(), self.input_form.roi_folder_name.text())
 
         # ✅ Delete existing ROI folder if it exists
         if os.path.exists(roi_dir):
@@ -1312,14 +696,16 @@ class ImageProcessingApp(QMainWindow):
                 # Overwrite label properly
                 df_props['label'] = [merged_label_str] * len(df_props)
                 df_props['image_name'] = image_name
-                df_props['Replicate'] = self.condition_name.text()
-                df_props['Condition'] = self.rep_num.text()
+                df_props['Replicate'] = self.input_form.condition_name.text()
+                df_props['Condition'] = self.input_form.rep_num.text()
+
+
 
                 # Save to new or excluded
                 if is_active:
                     new_rows.append(df_props)
                 else:
-                    df_props = pixel_conversion(df_props, float(self.pixel_rate.text()))
+                    df_props = pixel_conversion(df_props, float(self.input_form.pixel_rate.text()))
                     excluded_rows.append(df_props)
 
         # --- Step 4: Add disconnected (ungrouped) masks ---
@@ -1346,8 +732,8 @@ class ImageProcessingApp(QMainWindow):
                 df_props = compute_region_properties(mask, intensity_image=intensity_image)
                 df_props['label'] = label
                 df_props['image_name'] = image_name
-                df_props['Replicate'] = self.condition_name.text()
-                df_props['Condition'] = self.rep_num.text()
+                df_props['Replicate'] = self.input_form.condition_name.text()
+                df_props['Condition'] = self.input_form.rep_num.text()
 
 
                 if self.roi_checkbox.isChecked():  # or your actual checkbox variable
@@ -1426,8 +812,8 @@ class ImageProcessingApp(QMainWindow):
 
                 df_drawn_props['image_name'] = image_name
                 df_drawn_props['label'] = f"drawn_{prop.label}"
-                df_drawn_props['Replicate'] = self.condition_name.text()
-                df_drawn_props['Condition'] = self.rep_num.text()
+                df_drawn_props['Replicate'] = self.input_form.condition_name.text()
+                df_drawn_props['Condition'] = self.input_form.rep_num.text()
 
                 if self.roi_checkbox.isChecked():
                     df_drawn_props = self.add_roi_name_column(df_drawn_props)
@@ -1437,7 +823,7 @@ class ImageProcessingApp(QMainWindow):
         # --- Step 5: Update all_props_df with new rows ---
         if new_rows:
             new_df = pd.concat(new_rows, ignore_index=True)
-            new_df = pixel_conversion(new_df, float(self.pixel_rate.text()))
+            new_df = pixel_conversion(new_df, float(self.input_form.pixel_rate.text()))
 
             # Get inactive merged keys from excluded_rows (already computed earlier)
             excluded_keys = set(
@@ -1548,9 +934,6 @@ class ImageProcessingApp(QMainWindow):
 
         return grouped
 
-    def show_save_all(self):
-        self.image_layout.addWidget(self.button_widget)
-
     def start_processing(self):
         if hasattr(self, "gray_viewers"):
             for viewer in self.gray_viewers:
@@ -1564,7 +947,7 @@ class ImageProcessingApp(QMainWindow):
         # Clear image layout in GUI
         if self.image_layout is not None:
             while self.image_layout.count():
-                child = self.image_layout.takeAt(0)
+                child =  self.image_layout.takeAt(0)
                 if child.widget():
                     child.widget().deleteLater()
 
@@ -1576,28 +959,28 @@ class ImageProcessingApp(QMainWindow):
             self.worker.image_dict.clear()
             del self.worker 
         try:
-            folder_path = self.images_folder_path.text()
-            csv_file_name = self.csv_file_name.text()
-            roi_folder_name = self.roi_folder_name.text()
-            condition_name = self.condition_name.text()
-            rep_num = self.rep_num.text()
-            main_marker_identifier = self.unique_main_marker_identifier.text()
-            nucleus_identifier = self.unique_nucleus_identifier.text()
-            color = self.main_marker_channel_dropdown.currentText()
+            folder_path = self.input_form.images_folder_path.text()
+            csv_file_name = self.input_form.csv_file_name.text()
+            roi_folder_name = self.input_form.roi_folder_name.text()
+            condition_name = self.input_form.condition_name.text()
+            rep_num = self.input_form.rep_num.text()
+            main_marker_identifier = self.input_form.unique_main_marker_identifier.text()
+            nucleus_identifier = self.input_form.unique_nucleus_identifier.text()
+            color = self.input_form.main_marker_channel_dropdown.currentText()
             # Get values from sliders instead of text fields
-            main_marker_contrast_low = self.main_marker_low_contrast_slider.value()
-            main_marker_contrast_high = self.main_marker_high_contrast_slider.value()
-            nucleus_contrast_low = self.nucleus_low_contrast_slider.value()
-            nucleus_contrast_high = self.nucleus_high_contrast_slider.value()
-            diam = int(self.diameter.text())
-            flow_thresh = float(self.flow_threshold.text())
-            min_area = int(self.min_area.text())
-            min_non_black_pixels_percentage = float(self.min_non_black_pixels_percentage.text())
-            intensity_threshold = int(self.intensity_threshold.text())
-            min_nucleus_pixels_percentage = float(self.min_nucleus_pixels_percentage.text())
-            nucleus_pixel_threshold = int(self.nucleus_pixel_threshold.text())
+            main_marker_contrast_low = self.input_form.main_marker_low_contrast_slider.value()
+            main_marker_contrast_high = self.input_form.main_marker_high_contrast_slider.value()
+            nucleus_contrast_low = self.input_form.nucleus_low_contrast_slider.value()
+            nucleus_contrast_high = self.input_form.nucleus_high_contrast_slider.value()
+            diam = int(self.input_form.diameter.text())
+            flow_thresh = float(self.input_form.flow_threshold.text())
+            min_area = int(self.input_form.min_area.text())
+            min_non_black_pixels_percentage = float(self.input_form.min_non_black_pixels_percentage.text())
+            intensity_threshold = int(self.input_form.intensity_threshold.text())
+            min_nucleus_pixels_percentage = float(self.input_form.min_nucleus_pixels_percentage.text())
+            nucleus_pixel_threshold = int(self.input_form.nucleus_pixel_threshold.text())
             pixel_conv_rate = None
-            pixel_conv_rate_text = self.pixel_rate.text()
+            pixel_conv_rate_text = self.input_form.pixel_rate.text()
             # Loading images from folder
             self.images = open_folder(folder_path, [main_marker_identifier,nucleus_identifier])
             if pixel_conv_rate_text != "":
@@ -1606,17 +989,17 @@ class ImageProcessingApp(QMainWindow):
                 except ValueError:
                     self.update_status_label(f"Invalid input, please refer to instructions!")
                     self.processing_in_progress = False
-                    self.process_button.setEnabled(True)  # Re-enable the start button
+                    self.input_form.process_button.setEnabled(True)  # Re-enable the start button
                     return
 
-            nucleus_channel_present = self.nucleus_checkbox.isChecked()
+            nucleus_channel_present = self.input_form.nucleus_checkbox.isChecked()
 
             # Creating the worker to process images in the background
             self.worker = ImageProcessingWorker(self.images, folder_path, condition_name, rep_num, main_marker_identifier, nucleus_identifier, color, 
                                                 main_marker_contrast_low, main_marker_contrast_high, nucleus_contrast_low, nucleus_contrast_high, 
                                                 diam, flow_thresh, min_area, min_non_black_pixels_percentage, intensity_threshold, min_nucleus_pixels_percentage,
                                             nucleus_pixel_threshold, pixel_conv_rate, csv_file_name, roi_folder_name, 
-                                            self.progress_bar, self.model, nucleus_channel_present=nucleus_channel_present)
+                                            self.input_form.progress_bar, self.model, nucleus_channel_present=nucleus_channel_present)
 
             # Connecting the worker's signal to the slot to update the UI
             self.worker.status_update.connect(self.update_status_label)
@@ -1631,25 +1014,28 @@ class ImageProcessingApp(QMainWindow):
             # Showing an error message if invalid input
             self.update_status_label(f"Invalid input, please refer to instructions!")
             self.processing_in_progress = False
-            self.process_button.setEnabled(True)  # Re-enabling the start button
+            self.input_form.process_button.setEnabled(True)  # Re-enabling the start button
 
     def update_status_label(self, message):
-        self.processing_label.setText(message)
+        self.input_form.processing_label.setText(message)
+        
+    def show_save_all(self):
+        self.image_layout.addWidget(self.button_widget)
 
     def processing_done(self):
         """
         Called when processing is finished
         """
         self.processing_in_progress = False
-        self.process_button.setEnabled(True)
+        self.input_form.process_button.setEnabled(True)
      
     def update_progress(self, value):
         """
         Update progress bar when processing is updated
         """
-        self.progress_bar.setValue(value)  # Updating bar with percentage
-        self.progress_bar.setFormat(f"{value}%")  # Display percentage
-        self.progress_bar.repaint()  # Force UI update
+        self.input_form.progress_bar.setValue(value)  # Updating bar with percentage
+        self.input_form.progress_bar.setFormat(f"{value}%")  # Display percentage
+        self.input_form.progress_bar.repaint()  # Force UI update
 
     def add_images_to_scrollable_area(self, title, pixmap_gray, pixmap_rgb, pixmap_overlay, masks_list):
 
@@ -1673,13 +1059,13 @@ class ImageProcessingApp(QMainWindow):
         label_overlay.setPixmap(scaled_pixmap_overlay)
         label_gray.setPixmap(scaled_pixmap_gray)
 
-        show_labels = self.cell_labels_checkbox.isChecked()
-        font_size = self.cell_label_font_size_spinbox.value()
+        show_labels = self.input_form.cell_labels_checkbox.isChecked()
+        font_size = self.input_form.cell_label_font_size_spinbox.value()
         # Using the scaled gray image in ImageViewer
         if not hasattr(self, "viewer_mode_controller"):
             self.viewer_mode_controller = ViewerModeController()
         controller = self.viewer_mode_controller    
-        self.gray_viewer = ImageViewer(scaled_pixmap_gray, masks_list, font_size, show_labels, title, worker=self.worker, mode_controller=controller)
+        self.gray_viewer = ImageViewer(scaled_pixmap_gray, masks_list, font_size, show_labels, title, mode_controller=controller)
 
         layout.addWidget(label_rgb)
         layout.addWidget(label_overlay)
@@ -1697,10 +1083,9 @@ class ImageProcessingApp(QMainWindow):
         combined_container.setLayout(combined_layout)
         
         if self.image_layout is None:
-            self.image_layout = self.create_images_tab()
+             self.image_layout = self.create_images_tab()
 
         self.image_layout.addWidget(combined_container, alignment=Qt.AlignmentFlag.AlignTop)
-
 
     def mousePressEvent(self, event):
         """
@@ -1709,7 +1094,6 @@ class ImageProcessingApp(QMainWindow):
         if self.help_text.isVisible():
             self.help_text.setVisible(False)
 
-    # Override function
     def closeEvent(self, event):
         """
         Override the closeEvent to close the help window when the main window is closed
@@ -1718,6 +1102,7 @@ class ImageProcessingApp(QMainWindow):
             self.help_text.setVisible(False)  # Close help window before closing main window
         event.accept()  # Proceed with closing the main window
 
+
 class ImageProcessingWorker(QThread):
     
     image_processed = pyqtSignal(str, QPixmap, QPixmap, QPixmap, list)
@@ -1725,7 +1110,7 @@ class ImageProcessingWorker(QThread):
     show_save_all = pyqtSignal() # Signal to show the save all button
     finished_processing = pyqtSignal() # Signal for the end of the process
     progress_updated = pyqtSignal(int) # Signal for a progress bar updates
-   
+    
 
     def __init__(self, images, folder_path, condition_name, rep_num, main_marker_identifier, nucleus_identifier,  color,  main_marker_contrast_low,
                  main_marker_contrast_high, nucleus_contrast_low, nucleus_contrast_high,  diam, thresh, min_area, min_non_black_pixels_percentage,
@@ -1759,6 +1144,7 @@ class ImageProcessingWorker(QThread):
         self.model = model
         self.nucleus_channel_present = nucleus_channel_present
         self.image_dict = {}
+        self.masks_dict = {}
 
     def stop(self):
         self.active = False

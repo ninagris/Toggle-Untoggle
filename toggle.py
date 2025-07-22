@@ -6,139 +6,217 @@ from PyQt6.QtGui import QPixmap, QImage, QColor, QFont, QPen, QPainter, QPainter
 
 
 class ViewerModeController:
+    """
+    Controller class to manage viewer modes (toggle, connect, draw, erase).
+    Keeps all registered viewers in sync when the mode changes.
+    """
     def __init__(self):
         self._mode = "toggle"  # Set a default mode
-        self.viewers = []
+        self.viewers = [] # List to store all registered ImageViewer instances
 
     def register_viewer(self, viewer):
+        """
+        Register a new viewer and sync it with the current mode.
+        Also enables mode checking for that viewer.
+        """
         self.viewers.append(viewer)
-        viewer.set_mode(self._mode)  # Always sets the current mode
-        viewer.mode_check_enabled = True
+        viewer.set_mode(self._mode)  # Set the current shared mode to the new viewer
+        viewer.mode_check_enabled = True # Enable mode-dependent behavior in the viewer
 
     def set_mode(self, new_mode):
+        """
+        Change the mode and propagate it to all registered viewers.
+        For example, switching between 'connect', 'draw', 'toggle', etc.
+        """
+        # Normalize input: if empty string, treat as None
+        if new_mode == "":
+            new_mode = None
+        
         self._mode = new_mode
         for viewer in self.viewers:
-            viewer.set_mode(new_mode)
+            viewer.set_mode(new_mode) # Update each viewer's mode
 
     def get_mode(self):
+        """
+        Returns the current shared mode.
+        """
         return self._mode
     
     def sync_all_viewers(self):
+        """
+        Forces all viewers to re-sync with the current mode.
+        """
         for viewer in self.viewers:
             viewer.set_mode(self._mode)
 
+
 class ClickableMask(QGraphicsPixmapItem):
     """
-    Allows toggling of the mask opacity when it's clicked
+    Custom QGraphicsPixmapItem subclass for handling individual mask interactivity.
+    Supports opacity toggling, tracking active/inactive state, and integration with viewer callbacks.
     """
     def __init__(self, pixmap, name, label, click_callback, binary_mask, connection_mode_getter, viewer):
+        """
+        Initialize the ClickableMask item.
+
+        Parameters:
+        - pixmap: QPixmap representing the mask.
+        - name: Name of the image this mask belongs to.
+        - label: Unique label for the mask within the image.
+        - click_callback: Function to call when the mask is toggled.
+        - binary_mask: Binary array representation of the mask.
+        - connection_mode_getter: Callable that returns whether connection mode is active.
+        - viewer: The parent viewer object managing this mask.
+        """
         super().__init__(pixmap)
-        self.setAcceptHoverEvents(True)
-        self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
+        self.setAcceptHoverEvents(True) # Enable hover events if needed later
+        self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton) # Accept left mouse clicks
         self.active_opacity = 1.0
         self.inactive_opacity = 0.2
-        self.setOpacity(self.active_opacity)  # Start fully visible
-        self.label = label  # Store the label for this mask
-        self.name = name # Store the name for this mask
-        self.is_inactive = False  # Track if mask is dimmed
+        self.setOpacity(self.active_opacity) # Start in active (toggled) state
+
+        self.label = label           # Label associated with this mask
+        self.name = name             # Name (usually image or group identifier)
+        self.is_inactive = False     # Track if mask is dimmed (inactive)
         self.binary_mask = binary_mask
-        self.connection_mode_getter = connection_mode_getter
-        self.click_callback = click_callback  # Store the callback function
-        self.viewer = viewer
+        self.connection_mode_getter = connection_mode_getter # Check if in "connect" mode
+        self.click_callback = click_callback # Callback function for clicks
+        self.viewer = viewer # Reference to the viewer managing masks
 
     def mousePressEvent(self, event):
+        """
+        Handles the mouse press interaction for toggling mask visibility.
+        Only works if the viewer is in 'toggle' mode and not in a connection mode.
+        """
         if not self.viewer.mode_check_enabled:
             event.ignore()
             return
+
         viewer_mode = self.viewer.mode
         connection_mode = self.connection_mode_getter()
 
-        # Only allow toggle interaction when viewer mode is explicitly "toggle" and not connect/draw/erase
+        # Only allow interaction in toggle mode, not in connect or draw mode
         if viewer_mode != "toggle" or connection_mode:
             event.ignore()
             return
+        
+        self.handle_toggle_mode()
+        event.accept()
 
-        # Proceed only in toggle mode
-        if viewer_mode == "toggle":
-            # Use group toggle if in group
-            mask_id = self.viewer.get_mask_id(self.name, self.label)
-            group = self.viewer.mask_id_to_group.get(mask_id)
+    def handle_toggle_mode(self):
+        """
+        Toggle mask or group of masks depending on whether this mask is part of a group.
+        """
+        mask_id = self.viewer.get_mask_id(self.name, self.label)
+        group = self.viewer.mask_id_to_group.get(mask_id)
+        # If grouped with other masks, toggle them together
+        if group:
+            self.toggle_group(group)
+        else:
+            self.toggle_individual()
 
-            if group:
-                turning_off = self.opacity() == self.viewer.active_opacity
-                merged_key = self.viewer.generate_merged_key(self.name, group["mask_ids"])
+    def toggle_group(self, group):
+        """
+        Toggle visibility for a group of masks.
+        """
+        # Determine current state from any one mask (they should be synchronized)
+        turning_off = self.opacity() == self.viewer.active_opacity
 
-                self.viewer.callback_dict[merged_key] = {
-                    "name": self.name,
-                    "label": merged_key.split('_', 1)[1],
-                    "is_active": not turning_off,
-                    "merged": True
-                }
+        # Create a key for the merged/grouped entry
+        merged_key = self.viewer.generate_merged_key(self.name, group["mask_ids"])
 
-                for mid in group["mask_ids"]:
-                    item = self.viewer.get_item_by_id(mid)
-                    if item:
-                        item.setOpacity(self.viewer.inactive_opacity if turning_off else self.viewer.active_opacity)
-                        item.is_inactive = turning_off
-                        individual_key = f"{item.name}_{item.label}"
-                        if individual_key in self.viewer.callback_dict:
-                            self.viewer.callback_dict[individual_key]["is_active"] = not turning_off
+        # Update merged entry in callback dict
+        self.viewer.callback_dict[merged_key] = {
+            "name": self.name,
+            "label": merged_key.split('_', 1)[1],
+            "is_active": not turning_off,
+            "merged": True
+        }
+        # Update each mask in the group
+        for mid in group["mask_ids"]:
+            item = self.viewer.get_item_by_id(mid)
+            if item:
+                item.setOpacity(self.viewer.inactive_opacity if turning_off else self.viewer.active_opacity)
+                item.is_inactive = turning_off
+                individual_key = f"{item.name}_{item.label}"
+                if individual_key in self.viewer.callback_dict:
+                    self.viewer.callback_dict[individual_key]["is_active"] = not turning_off
 
-                if turning_off and merged_key in self.viewer.new_mask_dict:
-                    del self.viewer.new_mask_dict[merged_key]
+        # Remove merged mask from new_mask_dict if turning off
+        if turning_off and merged_key in self.viewer.new_mask_dict:
+            del self.viewer.new_mask_dict[merged_key]
 
-            else:
-                turning_off = self.opacity() == self.viewer.active_opacity
-                self.setOpacity(self.viewer.inactive_opacity if turning_off else self.viewer.active_opacity)
-                self.is_inactive = turning_off
-                self.viewer.mask_click_callback(self.name, self.label, not turning_off)
-
-            event.accept()
+    def toggle_individual(self):
+        """
+        Toggle visibility of a single mask and notify viewer of the change.
+        """
+        turning_off = self.opacity() == self.viewer.active_opacity
+        self.setOpacity(self.viewer.inactive_opacity if turning_off else self.viewer.active_opacity)
+        self.is_inactive = turning_off
+        # Notify the viewer that this individual mask was toggled
+        self.viewer.mask_click_callback(self.name, self.label, not turning_off)
 
 
 class ImageViewer(QGraphicsView):
-    def __init__(self, pixmap, masks, font_size, show_labels=False, colors=None, image_name=None, worker=None, mode_controller=None):
+    """
+    Main class for displaying images and associated interactive masks.
+    Supports toggling masks, connecting/disconnecting them, drawing overlays,
+    and syncing with other viewers via ViewerModeController.
+    """
+    def __init__(self, pixmap, masks, font_size, show_labels=False, colors=None, image_name=None, mode_controller=None):
+        """
+        Initializes the ImageViewer widget.
+        
+        Args:
+            pixmap (QPixmap): The base image to display.
+            masks (list): List of dictionaries with keys: 'mask', 'label', 'image_name'.
+            font_size (int): Size of label fonts.
+            show_labels (bool): Whether to show label text on masks.
+            colors (list): Optional list of RGBA tuples to color the masks.
+            image_name (str): Name of the image, used as mask prefix.
+            mode_controller: Optional ViewerModeController for syncing modes across viewers.
+        """
         super().__init__()
+
+        # Callback information for individual masks
+        self.callback_dict = {} # Collect callback functions for each mask
+        self.original_masks = masks
         self.mode_controller = mode_controller  
         self.mode = "toggle"
+
+        # Register to sync with other viewers if mode controller is used
         if self.mode_controller:
             self.mode_controller.register_viewer(self)
         else:
             self.set_mode("toggle")
+
+        # Flags and state variables
         self.connection_mode = self.mode == "connect"
         self.disconnect_mode = self.mode == "connect"
-        self.drawing = self.mode == "draw"
-        self.callback_dict = {} # Collect callback functions for each mask
         self.mouse_path = []
         self.connection_line = None
-        self.original_masks = masks
-       
-        self.connected_groups = []  # each group is a dict: {'mask_ids': set, 'color': tuple, 'star_item': QGraphicsTextItem}
-        self.mask_id_to_group = {}  # for quick lookup: mask_id -> group dict
+        self.connected_groups = []  # list of mask group dicts
+        self.mask_id_to_group = {}  # mask_id -> group dict
         self.disconnect_mode = False
         self.new_mask_dict = {}
         self.correction_action = "connect"  # or "disconnect", depending on your UI
+        
+        # Canvas for drawing
+        self.drawing = self.mode == "draw"
         self.last_draw_point = None
         self.image_name = image_name
         self.drawing_canvas = QPixmap(pixmap.size())
         self.drawing_canvas.fill(Qt.GlobalColor.transparent)
         self.drawing_item = QGraphicsPixmapItem(self.drawing_canvas)
         self.drawing_item.setZValue(999)  # On top of masks
+
+        # Display settings
         self.active_opacity = 1.0
         self.inactive_opacity = 0.2
-        self.worker = worker
         self.pre_merge_callback_state = {}
+        self.set_view_properties()
 
-
-        # Disable scroll bars
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
-        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
-        self.setDragMode(QGraphicsView.DragMode.NoDrag)
-        self.setStyleSheet("border: none; padding: 0px; margin: 0px;")
-
-        # Set up a container for the image
+        # Set up graphics scene
         self.graphics_scene = QGraphicsScene(self)
         self.setScene(self.graphics_scene)
         self.graphics_scene.addItem(self.drawing_item)
@@ -150,30 +228,41 @@ class ImageViewer(QGraphicsView):
 
         # Generating a unique color for each mask
         num_masks = len(masks)
+
+        # Generate colors if not provided
         colors = self.generate_colors(num_masks)
         self.set_togglable_masks(masks, colors, pixmap, font_size=font_size, show_labels=show_labels)
-        
+    
+    def set_view_properties(self):
+        """Configures the view to remove scrollbars and borders, center the view, and disable drag."""
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
+        self.setDragMode(QGraphicsView.DragMode.NoDrag)
+        self.setStyleSheet("border: none; padding: 0px; margin: 0px;")
+
     def generate_merged_key(self, name, mask_ids):
         labels = sorted(str(self.get_item_by_id(mid).label) for mid in mask_ids)
         return  f"{name}({','.join(labels)})"
    
-  
     def keyPressEvent(self, event):
+        """Handles key events to switch between modes."""
         if event.key() == Qt.Key.Key_C:
             self.mode_controller.set_mode("connect")
             self.correction_action = "connect"
-
         elif event.key() == Qt.Key.Key_D:
             self.mode_controller.set_mode("connect")
             self.correction_action = "disconnect"
-
         elif event.key() == Qt.Key.Key_T:
             self.mode_controller.set_mode("toggle")
 
     def is_connection_mode(self):
+        """Returns whether the viewer is in 'connect' mode."""
         return self.connection_mode
     
     def mousePressEvent(self, event):
+        """Handles initiating interactions depending on the current mode."""
         if self.mode == "connect":
             self.mouse_path = [self.mapToScene(event.position().toPoint())]
             event.accept()
@@ -188,57 +277,71 @@ class ImageViewer(QGraphicsView):
         else:
             super().mousePressEvent(event)
 
-
     def mouseMoveEvent(self, event):
+        """Handles drawing, erasing, or connecting based on the current mode."""
+        # ===== CONNECT MODE =====
         if self.mode == "connect" and event.buttons() & Qt.MouseButton.LeftButton:
+            # Convert the current mouse position to scene coordinates
             scene_point = self.mapToScene(event.position().toPoint())
             self.mouse_path.append(scene_point)
 
-            # Draw stroke line as before
+             # Remove the existing temporary path (if any)
             if self.connection_line:
                 self.graphics_scene.removeItem(self.connection_line)
 
+            # Create a new path from recorded mouse points
             path = QPainterPath()
             path.moveTo(self.mouse_path[0])
             for pt in self.mouse_path[1:]:
                 path.lineTo(pt)
 
+            # Set pen style and create a QGraphicsPathItem for the path
             pen = QPen(QColor("white"))
             pen.setWidth(2)
             self.connection_line = QGraphicsPathItem(path)
             self.connection_line.setPen(pen)
             self.connection_line.setZValue(200)
+            # Add the path to the scene
             self.graphics_scene.addItem(self.connection_line)
+
             event.accept()
 
+        # ===== DRAW MODE =====
         elif self.mode == "draw" and self.drawing:
+            # Convert current position to scene coordinates
             current_point = self.mapToScene(event.position().toPoint())
 
-            if self.last_draw_point is not None:  # ✅ Only draw if there is a valid previous point
+             # If we have a valid previous point, draw a red line from it
+            if self.last_draw_point is not None:  
                 painter = QPainter(self.drawing_canvas)
                 pen = QPen(QColor("red"), 3, Qt.PenStyle.SolidLine)
                 painter.setPen(pen)
                 painter.drawLine(self.last_draw_point, current_point)
                 painter.end()
 
+                #  Update the QGraphicsPixmapItem to show the new drawing
                 self.drawing_item.setPixmap(self.drawing_canvas)
-
-            self.last_draw_point = current_point  # ✅ Update last point regardless
+            # Update the last point to current for next segment
+            self.last_draw_point = current_point  
             event.accept()
 
-
+        # ===== ERASE MODE =====
         elif self.mode == "erase" and self.drawing:
             current_point = self.mapToScene(event.position().toPoint())
 
             if self.last_draw_point is not None:
                 painter = QPainter(self.drawing_canvas)
+                 # Set composition mode to clear (erase) pixels
                 painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+
+                # Set a transparent pen to simulate erasing
                 eraser_size = 30
                 pen = QPen(QColor(0, 0, 0, 0), eraser_size)
                 painter.setPen(pen)
+                # Draw a line to erase from the last to current point
                 painter.drawLine(self.last_draw_point, current_point)
                 painter.end()
-
+                # Update the displayed pixmap
                 self.drawing_item.setPixmap(self.drawing_canvas)
 
             self.last_draw_point = current_point
@@ -247,16 +350,24 @@ class ImageViewer(QGraphicsView):
             super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
-
+        """Handles mouse release events depending on the mode."""
+        # ===== CONNECT MODE =====
         if self.mode == "connect" and event.button() == Qt.MouseButton.LeftButton:
+            # Add the final point to the path
             self.mouse_path.append(self.mapToScene(event.position().toPoint()))
+            # Handle connection logic (e.g., connect selected masks)
             self.handle_mouse_path()
+            # Clear path and remove temporary drawing
             self.mouse_path = []
             if self.connection_line:
                 self.graphics_scene.removeItem(self.connection_line)
                 self.connection_line = None
+
             event.accept()
+
+         # ===== DRAW / ERASE MODES =====
         elif self.mode in ("draw", "erase") and event.button() == Qt.MouseButton.LeftButton:
+            # Stop drawing/erasing and reset last point
             self.drawing = False
             self.last_draw_point = None
             event.accept()
@@ -265,104 +376,135 @@ class ImageViewer(QGraphicsView):
             super().mouseReleaseEvent(event)
 
     def extract_color_from_pixmap(self, pixmap):
+        """Extracts the first non-transparent pixel's color from a pixmap."""
         image = pixmap.toImage()
         width, height = image.width(), image.height()
         
-        # Scan for first non-transparent pixel
+        # Scan the image pixel by pixel
         for y in range(height):
             for x in range(width):
                 pixel = image.pixelColor(x, y)
-                if pixel.alpha() > 0:
+                if pixel.alpha() > 0: # Check if pixel is not fully transparent
                     return (pixel.red(), pixel.green(), pixel.blue(), pixel.alpha())
-        
-        return (255, 255, 255, 255)  # fallback white
+         # Return white if no visible pixel found
+        return (255, 255, 255, 255) 
     
     def set_mode(self, mode):
-        if mode not in ("toggle", "connect", "draw", "erase"):
+        """Sets the viewer mode to one of: 'toggle', 'connect', 'draw', 'erase'."""
+        valid_modes = ("toggle", "connect", "draw", "erase")
+    
+        if mode is None or mode == "":
+            # No active mode: disable interactions or set to a default "inactive" state
+            self.mode = None
+            self.connection_mode = False
+            self.disconnect_mode = False
+            self.drawing = False
+            self.last_draw_point = None
+            return
+        
+        if mode not in valid_modes:
             print(f"Invalid mode: {mode}")
             return
+        
         self.mode = mode
         self.connection_mode = (mode == "connect")
         self.disconnect_mode = (mode == "connect")
 
-    def is_connection_mode(self):
-        # Only connection mode active if in connect mode
-        return self.mode == "connect"
-   
     def handle_mouse_path(self):
+        """
+        Process the completed mouse stroke for connection.
+        Either merges selected masks or disconnects an existing group.
+        """
+        hit_masks = self.get_hit_masks_from_path()
+        active_items = [m for m in hit_masks if not m.is_inactive]
 
+        if len(active_items) <= 1:
+            return # Not enough masks to connect
+        
+         # Create a merged mask preview
+        merged_mask = self.create_merged_mask(active_items)
+         # Get unique IDs for the selected masks
+        mask_ids = {self.get_mask_id(m.name, m.label) for m in active_items}
+
+        # If all hit masks are part of the same group, disconnect them
+        if self.check_and_disconnect(hit_masks):
+            return
+         # Otherwise, merge and connect the selected masks
+        self.merge_and_connect_masks(active_items, mask_ids, merged_mask)
+    
+    def get_hit_masks_from_path(self):
+        """
+        Returns a set of masks touched by the mouse stroke path.
+        """
         hit_masks = set()
-        for item in self.mask_items: # mask_items are all currently displayed masks objects
+        for item in self.mask_items:
             if item.is_inactive:
-                continue  # Skip masks that are toggled off
+                continue
             for pt in self.mouse_path:
+                # Convert from scene to image coordinates
                 scene_x, scene_y = pt.x(), pt.y()
-
-                # mapping mouse position on the screen to actual pixel positions inside the mask array
                 img_x = int(scene_x * item.binary_mask.shape[1] / self.pixmap_item.pixmap().width())
                 img_y = int(scene_y * item.binary_mask.shape[0] / self.pixmap_item.pixmap().height())
-
+                # Check if the point falls within the binary mask
                 if 0 <= img_x < item.binary_mask.shape[1] and 0 <= img_y < item.binary_mask.shape[0]:
                     if item.binary_mask[img_y, img_x]:
                         hit_masks.add(item)
-                        break
-        
-        active_items = [m for m in hit_masks if not m.is_inactive]
-      
+                        break  # Only need one hit point per mask
+        return hit_masks
+    
+    def create_merged_mask(self, active_items):
+        """
+        Combines binary masks into one merged mask and generates metadata.
+        """
+        merged_mask = np.zeros_like(active_items[0].binary_mask, dtype=np.int32)
+        label_names = []
 
-        if len(active_items) > 1:
-      
-            merged_mask = np.zeros_like(active_items[0].binary_mask, dtype=np.int32)
-            label_names = []
+        for item in active_items:
+            merged_mask[item.binary_mask > 0] = 1
+            label_names.append(str(item.label))
 
-            for item in active_items:
-                merged_mask[item.binary_mask > 0] = 1
-                label_names.append(str(item.label))
+        label_names = sorted(label_names)
+        combined_label = "_".join(label_names)
+        name = active_items[0].name
+        mask_key = f"{name}_({combined_label})"
 
-            label_names = sorted(label_names)
-            combined_label = "_".join(label_names)
-            name = active_items[0].name
-            mask_key = f"{name}_({combined_label})"
+        # Store the merged mask and update internal dictionaries
+        self.new_mask_dict[mask_key] = {
+            "mask": merged_mask,
+            "source": "connect",
+            "image_name": name,
+            "label_group": label_names
+        }
 
-            self.new_mask_dict[mask_key] = {
-                "mask": merged_mask,
-                "source": "connect",
-                "image_name": name,
-                "label_group": label_names
-            }
-            self.callback_dict[mask_key] = {
-                "name": name,
-                "label": mask_key,  # the combined label string
-                "is_active": True,
-                "merged": True
-            }
+        self.callback_dict[mask_key] = {
+            "name": name,
+            "label": mask_key,
+            "is_active": True,
+            "merged": True
+        }
 
-        else:
-            return
+        return merged_mask
+    
+    def check_and_disconnect(self, hit_masks):
+        """Check if all hit masks are part of the same group and disconnect them if so."""
+        connected_mask_ids = {
+            self.get_mask_id(m.name, m.label)
+            for m in hit_masks if self.get_mask_id(m.name, m.label) in self.mask_id_to_group
+        }
 
-        mask_ids = {self.get_mask_id(m.name, m.label) for m in active_items}
-        merged_mask_ids = set(mask_ids)  # define it here early
-        connected_mask_ids = set()
-        for m in hit_masks:
-            mask_id = self.get_mask_id(m.name, m.label)
-            if mask_id in self.mask_id_to_group:
-                connected_mask_ids.add(mask_id)
-
+        # All masks must belong to some group
         if len(connected_mask_ids) == len(hit_masks):
             group_ids = [self.mask_id_to_group[mid] for mid in connected_mask_ids]
-            if len(set(map(id, group_ids))) > 1:
-                return
-          
-
-            group = self.mask_id_to_group.get(next(iter(connected_mask_ids)))
-            if group:
-                self.disconnect_group(group)
-            return
-        else:
-            # Not all masks are connected —> proceed to connect
-            print("Auto-connecting masks")
-
-        # === Connection logic ===
+            if len(set(map(id, group_ids))) == 1: # All in the same group
+                group = self.mask_id_to_group.get(next(iter(connected_mask_ids)))
+                if group:
+                    self.disconnect_group(group)
+                    return True
+        return False
+    
+    def merge_and_connect_masks(self, active_items, mask_ids, merged_mask):
+        """Merge selected masks into a group and recolor them with a unified color."""
+        # Find and unify existing groups
         groups = [self.mask_id_to_group[mid] for mid in mask_ids if mid in self.mask_id_to_group]
         seen = set()
         unique_groups = []
@@ -372,36 +514,38 @@ class ImageViewer(QGraphicsView):
                 seen.add(group_id)
                 unique_groups.append(group)
 
+        # Merge all mask IDs and items
         merged_mask_ids = set(mask_ids)
-        merged_items = list(hit_masks)
+        merged_items = list(active_items)
         merged_color = merged_items[0].default_color
 
-        if unique_groups:
-            for group in unique_groups:
-                merged_mask_ids.update(group["mask_ids"])
-                merged_items.extend(self.get_items_by_ids(group["mask_ids"]))
-                self.connected_groups.remove(group)
+         # Flatten the groups and remove them
+        for group in unique_groups:
+            merged_mask_ids.update(group["mask_ids"])
+            merged_items.extend(self.get_items_by_ids(group["mask_ids"]))
+            self.connected_groups.remove(group)
+
+        # Create and register a new group
         new_group = {
             "mask_ids": merged_mask_ids,
             "color": merged_color,
-            'mask': merged_mask
+            "mask": merged_mask
         }
         self.connected_groups.append(new_group)
-
         for mid in merged_mask_ids:
             self.mask_id_to_group[mid] = new_group
 
+        # Update callbacks and recolor masks
         for item in active_items:
             self.recolor_mask(item, merged_color)
             key = f"{item.name}_{item.label}"
+
             if key not in self.pre_merge_callback_state:
                 self.pre_merge_callback_state[key] = self.callback_dict.get(key, {}).copy()
-
 
             if key in self.callback_dict:
                 self.callback_dict[key]["merged"] = True
             else:
-                
                 self.callback_dict[key] = {
                     "name": item.name,
                     "label": item.label,
@@ -410,170 +554,126 @@ class ImageViewer(QGraphicsView):
                 }
 
     def get_item_by_id(self, mask_id):
+        """Return the mask item corresponding to the given mask ID."""
         for item in self.mask_items:
             if self.get_mask_id(item.name, item.label) == mask_id:
                 return item
         return None
     
     def get_items_by_ids(self, id_set):
+            """Return a list of mask items for a given set of mask IDs."""
             return [self.get_item_by_id(mid) for mid in id_set]
     
     def get_mask_id(self, name, label):
+        """Generate a unique ID string for a mask from its name and label."""
         return f"{name}_{label}"
-
+    
     def disconnect_mask(self, mask_id):
+        """Disconnect an individual mask from its group and restore its original state."""
         group = self.mask_id_to_group.get(mask_id)
         if not group:
             return
 
-        # ✅ Now group is always defined beyond this point
         disconnected_item = self.get_item_by_id(mask_id)
         if disconnected_item is None:
             return
 
-        label_names = sorted(
-            str(self.get_item_by_id(mid).label)
-            for mid in group["mask_ids"]
-            if self.get_item_by_id(mid)
-        )
-        name = disconnected_item.name
-        merged_key = f"{name}_({','.join(label_names)})"
-
-    
-        if merged_key in self.callback_dict:
-            del self.callback_dict[merged_key]
-        if merged_key in self.new_mask_dict:
-            del self.new_mask_dict[merged_key]
+        merged_key = self.get_merged_key_from_group(group)
+        self.remove_merged_mask_entries(merged_key)
 
         for remaining_id in group["mask_ids"]:
-            item = self.get_item_by_id(remaining_id)
-            if not item:
-                continue
+            self.restore_individual_mask(remaining_id)
 
-            key = f"{item.name}_{item.label}"
-            cached = self.pre_merge_callback_state.get(key)
-            self.callback_dict[key] = {
-                "name": item.name,
-                "label": item.label,
-                "is_active": cached["is_active"] if cached else True,
-                "merged": False
-            }
-
-            self.new_mask_dict[key] = {
-                "mask": item.binary_mask,
-                "source": "disconnect",
-                "image_name": item.name,
-                "label_group": [str(item.label)],
-            }
-
-        self.connected_groups = [g for g in self.connected_groups if g != group]
- 
-        # Step 2: If group has < 2 remaining → dissolve it fully
         if len(group["mask_ids"]) < 2:
-            self.connected_groups.remove(group)
+            self.remove_group(group)
 
-            for remaining_id in list(group["mask_ids"]):  # even if it's just 1
-                
-                item = self.get_item_by_id(remaining_id)
-                if item:
-                    self.recolor_mask(item, item.default_color)
-                    item.setOpacity(self.active_opacity)
-                    item.is_inactive = False
+            for remaining_id in list(group["mask_ids"]):
+                if remaining_id == mask_id:
+                    continue
+                self.restore_individual_mask(remaining_id)
 
-                    if remaining_id in self.mask_id_to_group:
-                        del self.mask_id_to_group[remaining_id]
-
-                    if remaining_id == mask_id:
-                        continue 
-
-                    key = f"{item.name}_{item.label}"
-                    cached = self.pre_merge_callback_state.get(key)
-                    self.callback_dict[key] = {
-                        "name": item.name,
-                        "label": item.label,
-                        "is_active": cached["is_active"] if cached else True,
-                        "merged": False
-                    }
-
-
-                    self.new_mask_dict[key] = {
-                        "mask": item.binary_mask,
-                        "source": "disconnect",
-                        "image_name": item.name,
-                        "label_group": [str(item.label)],
-                    }
-
-        # Step 3: Refresh scene
-        if merged_key in self.new_mask_dict:
-            del self.new_mask_dict[merged_key]
-        if group in self.connected_groups:
-            self.connected_groups.remove(group)
-        self.scene().update()
-        self.viewport().update()
+        self.remove_merged_mask_entries(merged_key)
+        self.remove_group(group)
+        self.refresh_scene()
 
     def disconnect_group(self, group):
-        # Generate merged key (before group is dissolved)
+        """Disconnect all masks in a group and restore them individually."""
+        merged_key = self.get_merged_key_from_group(group)
+        self.remove_merged_mask_entries(merged_key)
+
+        for mid in list(group["mask_ids"]):
+            self.restore_individual_mask(mid)
+
+        self.remove_group(group)
+        self.refresh_scene()
+
+    def get_merged_key_from_group(self, group):
+        """Generate a key to identify the merged mask from a group."""
         label_names = sorted(
             str(self.get_item_by_id(mid).label)
             for mid in group["mask_ids"]
             if self.get_item_by_id(mid)
         )
-        name = next(iter(group["mask_ids"])).split("_")[0]  # crude way to extract name
-        merged_key = f"{name}_({','.join(label_names)})"
+        name = next(iter(group["mask_ids"])).split("_")[0]
+        return f"{name}_({','.join(label_names)})"
 
-        if merged_key in self.callback_dict:
-            del self.callback_dict[merged_key]
-        if merged_key in self.new_mask_dict:
-            del self.new_mask_dict[merged_key]
-        
+    def remove_merged_mask_entries(self, merged_key):
+        """Remove merged mask metadata from internal tracking dictionaries."""
+        self.callback_dict.pop(merged_key, None)
+        self.new_mask_dict.pop(merged_key, None)
 
-        for mid in list(group["mask_ids"]):
-            item = self.get_item_by_id(mid)
-            if not item:
-                continue
-            self.recolor_mask(item, item.default_color)
-            item.setOpacity(self.active_opacity)
-            item.is_inactive = False
+    def restore_individual_mask(self, mid):
+        """Restore a single mask to its pre-merge state."""
+        item = self.get_item_by_id(mid)
+        if not item:
+            return
 
-            if mid in self.mask_id_to_group:
-                del self.mask_id_to_group[mid]
+        key = f"{item.name}_{item.label}"
+        cached = self.pre_merge_callback_state.get(key)
+        self.callback_dict[key] = {
+            "name": item.name,
+            "label": item.label,
+            "is_active": cached["is_active"] if cached else True,
+            "merged": False
+        }
 
-            key = f"{item.name}_{item.label}"
-            self.callback_dict[key] = {
-                "name": item.name,
-                "label": item.label,
-                "is_active": True,
-                "merged": False
-            }
+        self.new_mask_dict[key] = {
+            "mask": item.binary_mask,
+            "source": "disconnect",
+            "image_name": item.name,
+            "label_group": [str(item.label)],
+        }
+        # Apply original color and make visible
+        self.recolor_mask(item, item.default_color)
+        item.setOpacity(self.active_opacity)
+        item.is_inactive = False
 
-            self.new_mask_dict[key] = {
-                "mask": item.binary_mask,
-                "source": "disconnect",
-                "image_name": item.name,
-                "label_group": [str(item.label)],
-            }
+        self.mask_id_to_group.pop(mid, None)
 
-        
+    def remove_group(self, group):
+        """Remove a mask group from tracking."""
         if group in self.connected_groups:
             self.connected_groups.remove(group)
-        
+
+    def refresh_scene(self):
+        """Force a refresh of the scene and viewport to reflect changes."""
         self.scene().update()
         self.viewport().update()
 
     def recolor_mask(self, mask_item_to_update, color):
+        """Apply a new color to the mask item and update its pixmap."""
         for mask_data in self.original_masks:
             if mask_data["image_name"] == mask_item_to_update.name and mask_data["label"] == mask_item_to_update.label:
                 binary_mask = mask_data["mask"]
                 rgba_color = (color[0], color[1], color[2], 200)  # force alpha to 200
                 new_pixmap = self.convert_mask_to_pixmap(binary_mask, rgba_color)
-
+                 # Resize pixmap to match base image dimensions
                 scaled_pixmap = new_pixmap.scaled(
                     self.pixmap_item.pixmap().width(),
                     self.pixmap_item.pixmap().height(),
                     Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation
                 )
-
                 mask_item_to_update.setPixmap(scaled_pixmap)
                 return
 
@@ -581,12 +681,13 @@ class ImageViewer(QGraphicsView):
         """
         Making each mask a togglable object with assigned properties, centered at its object centroid.
         """
-
+        # Clear existing masks and state
         for item in self.mask_items:
             self.graphics_scene.removeItem(item)
         self.mask_items.clear()
         self.connected_groups.clear()
         self.mask_id_to_group.clear()
+        # Add and register new masks
         for i, mask_data in enumerate(masks):
             label = mask_data["label"]
             name = mask_data["image_name"]
@@ -601,8 +702,6 @@ class ImageViewer(QGraphicsView):
                     "is_active": True,
                     "merged": False
                 }
-                
-
             # Convert mask to pixmap and scale it to the image size
             mask_pixmap = self.convert_mask_to_pixmap(mask, color)
             scaled_pixmap = mask_pixmap.scaled(
@@ -612,8 +711,7 @@ class ImageViewer(QGraphicsView):
                 Qt.TransformationMode.SmoothTransformation
             )
 
-            # Add the mask on top of the image at (0, 0)
-            # Before adding the mask to the scene
+            # Create interactive mask object
             mask_item = ClickableMask(
                 scaled_pixmap, name, label, self.mask_click_callback, binary_mask=mask,
                 connection_mode_getter=self.is_connection_mode,
@@ -634,7 +732,7 @@ class ImageViewer(QGraphicsView):
                     "image_name": name,
                     "label_group": label
                 }
-
+            # If applicable, add a label at mask centroid
             if show_labels:
                 y_coords, x_coords = np.nonzero(mask)
                 if len(x_coords) == 0 or len(y_coords) == 0:
@@ -661,9 +759,11 @@ class ImageViewer(QGraphicsView):
                 label_item.setPos(scaled_x - rect.width() / 2, scaled_y - rect.height() / 2)
                 self.graphics_scene.addItem(label_item)
 
-    # override method
     def resizeEvent(self, event):
-        self.fitInView(self.pixmap_item, Qt.AspectRatioMode.KeepAspectRatio)  # Keep it fixed
+        """
+        Override resize behavior to maintain aspect ratio
+        """
+        self.fitInView(self.pixmap_item, Qt.AspectRatioMode.KeepAspectRatio)  
         event.accept()
 
     def generate_colors(self, num_colors):
@@ -692,7 +792,6 @@ class ImageViewer(QGraphicsView):
         q_image = QImage(colored_mask.data, width, height, width * 4, QImage.Format.Format_RGBA8888)
         return QPixmap.fromImage(q_image)
     
-   
     def mask_click_callback(self, name, label, is_active):
         """
         Update or add entry for the mask clicked
