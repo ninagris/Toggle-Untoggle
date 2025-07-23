@@ -23,19 +23,24 @@ from image_analysis_pipeline import open_folder, image_preprocessing, analyze_se
 from toggle import ImageViewer, ViewerModeController
 from input_form_components import InputFormWidget, DraggableTextEdit
 
+
 class ImageProcessingApp(QMainWindow):
     def __init__(self):
         super().__init__()
+        # Load default Cellpose model (cyto3) with GPU enabled
         self.model = models.CellposeModel(gpu=True, model_type='cyto3')
-        self.model.device = torch.device("mps")  # Force MPS usage (for mac gpu use)
 
+        # Window setup
         self.setWindowTitle("Toggle-Untoggle")
         self.setWindowIcon(QIcon("icon.png"))
         self.resize(850, 700)
         self.setMinimumSize(850, 700)
         self.showFullScreen()
+
+        # Controller for managing viewer mode states
         self.viewer_mode_controller = ViewerModeController()
-        # Main tab widget With tabs on top
+
+        # Main tab layout
         self.tabs = QTabWidget()
         self.tabs.setTabPosition(QTabWidget.TabPosition.North)
         self.setCentralWidget(self.tabs)
@@ -57,7 +62,7 @@ class ImageProcessingApp(QMainWindow):
             }
         """)
 
-        # Creating the clickable GitHub link QLabel
+        # GitHub link in top-right corner
         self.github_link = QLabel()
         self.github_link.setText(
             '<a href="https://github.com/ninagris/Toggle-Untoggle" style="font-size:18px;">'
@@ -69,43 +74,55 @@ class ImageProcessingApp(QMainWindow):
         self.github_link.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.github_link.setStyleSheet("padding-right: 15px;")
         self.tabs.setCornerWidget(self.github_link, Qt.Corner.TopRightCorner) # Adding the link to the top right corner of the tab bar
+
+        # Help text overlay
         self.help_text = DraggableTextEdit(parent=self)
         self.help_text.setVisible(False)
         font = QFont("Arial", 18) 
         self.help_text.setFont(font)
         self.help_text.setReadOnly(True)
-        # Customizing Tab for the input parameters
-        self.input_tab = QWidget()       # Create the tab widget
+
+        # Input tab and form
+        self.input_tab = QWidget() 
         self.input_tab.setLayout(QVBoxLayout())
         self.input_form = InputFormWidget(parent=self.input_tab, help_text=self.help_text, tab_widget=self.tabs)
         self.input_tab.layout().addWidget(self.input_form)
         self.tabs.addTab(self.input_tab, "Input Parameters")
-        # List for storing grayscale images with interactive masks
+
+        # State variables
         self.gray_viewers = []
         self.processing_in_progress = False
         self.input_form.processClicked.connect(self.on_process_clicked)
         self.input_form.saveClicked.connect(self.collect_all_callbacks)
-        self.images_tab = None  # Start without images tab
-        self.image_layout = None  # This will hold image layout
+        self.images_tab = None   # Image display tab
+        self.image_layout = None  # Layout for processed image widgets
     
+
     def update_modes(self):
+        """
+        Handle mutually exclusive mode selection (toggle, connect, draw, erase)
+        """
         mode = None  # Initialize mode
         sender = self.sender()
+        # Toggle mode
         if sender == self.toggle_checkbox and sender.isChecked():
             self.correction_checkbox.setChecked(False)
             self.drawing_checkbox.setChecked(False)
             self.erase_checkbox.setChecked(False)
             mode = "toggle"
+        # Connect (correction) mode
         elif sender == self.correction_checkbox and sender.isChecked():
             self.toggle_checkbox.setChecked(False)
             self.drawing_checkbox.setChecked(False)
             self.erase_checkbox.setChecked(False)
             mode = "connect"
+        # Draw new masks mode
         elif sender == self.drawing_checkbox and sender.isChecked():
             self.toggle_checkbox.setChecked(False)
             self.correction_checkbox.setChecked(False)
             self.erase_checkbox.setChecked(False)
             mode = 'draw'
+        # Erase drawn masks mode
         elif sender == self.erase_checkbox and sender.isChecked():
             self.toggle_checkbox.setChecked(False)
             self.correction_checkbox.setChecked(False)
@@ -114,34 +131,39 @@ class ImageProcessingApp(QMainWindow):
 
         self.viewer_mode_controller.set_mode(mode)  
     
-    def handle_model_selection(self, model_type: str, custom_path: str):
 
-        # Always clear the current model first
-        self.model = None
+    def handle_model_selection(self, model_type: str, custom_path: str):
+        """
+        Loads a Cellpose model based on dropdown or custom path.
+        """
+        self.model = None # Clear previous model
         try:
+            # No model selected
             if model_type == "" and not custom_path.strip():
                 raise ValueError("Please input a valid path to the custom model.")
 
-            if custom_path:
+            if custom_path: # Load custom model from file
                 if not os.path.exists(custom_path):
                     raise ValueError("Custom model path does not exist.")
                 self.model = models.CellposeModel(gpu=True, pretrained_model=custom_path)
 
-            elif model_type in ["cyto", "cyto2", "cyto3", "nuclei"]:
+            elif model_type in ["cyto", "cyto2", "cyto3", "nuclei"]:  # Load built-in model
                 self.model = models.CellposeModel(gpu=True, model_type=model_type)
 
             else:
                 raise ValueError("Invalid model type selection.")
-
             self.model.device = torch.device("mps")
 
         except Exception as e:
-            self.model = None  # ← extra safety
+            self.model = None
             print(f"[MODEL] Model loading failed: {e}")
             raise
 
+
     def resizeEvent(self, event):
-        # Your aspect ratio code here (keep as is)
+        """
+        Maintain 20:13 aspect ratio for fullscreen display
+        """
         current_size = self.size()
         aspect_ratio = 20 / 13
         desired_width = current_size.width()
@@ -156,14 +178,15 @@ class ImageProcessingApp(QMainWindow):
             return  # Skip recentering during forced resize
 
         super().resizeEvent(event)
-
+        # Recenter help window if visible
         if hasattr(self, "help_text") and self.help_text.isVisible():
             # Defer centering so all layouts & sizes update first
             QTimer.singleShot(0, self.help_text.center_in_parent)
 
+
     def on_process_stop(self):
         """
-        Enabling the button to stop the process
+        Stop processing by killing the worker
         """
         if self.worker is not None:
             self.worker.stop()  # Setting the abort flag to stop the worker
@@ -177,7 +200,11 @@ class ImageProcessingApp(QMainWindow):
             self.input_form.process_button.setEnabled(False)
             self.processing_in_progress = False
 
+
     def update_stop_button(self, count, button_layout):
+        """
+        Show stop button only once, after first image processed
+        """
         if count > 0 and (not hasattr(self, "stop_button") or self.stop_button is None):  # Making sure that the stop button is only created once
             self.stop_button = QPushButton("Stop Processing")
             self.stop_button.setStyleSheet("""
@@ -204,10 +231,14 @@ class ImageProcessingApp(QMainWindow):
             self.stop_button.clicked.connect(self.on_process_stop)
             self.input_form.process_button.setEnabled(False)
 
+
     def on_process_clicked(self, button_layout):
+        """
+        Start processing when user clicks 'Process'
+        """
         if self.processing_in_progress:
             return
-        
+        # Reset image viewer data
         if hasattr(self, "gray_viewers"):
             for viewer in self.gray_viewers:
                 viewer.connected_groups.clear()
@@ -216,7 +247,7 @@ class ImageProcessingApp(QMainWindow):
                 if hasattr(viewer, "new_mask_dict"):
                     viewer.new_mask_dict.clear()
             self.gray_viewers.clear()  # Remove old viewers
-
+        # Load model from UI
         try:
             # Get the current values live from the widget
             current_model_text = self.input_form.model_selector_widget.model_dropdown.currentText()
@@ -238,7 +269,8 @@ class ImageProcessingApp(QMainWindow):
             self.processing_in_progress = False
             self.input_form.process_button.setEnabled(True)
             return
-
+        
+        # Proceed with processing
         self.processing_in_progress = True
         self.input_form.processing_label.setText("Processing started...")
         self.input_form.process_button.setEnabled(False)
@@ -251,15 +283,16 @@ class ImageProcessingApp(QMainWindow):
                 self.tabs.removeTab(current_index)
                 self.images_tab = None
                 self.image_layout = None
+
         # Starting processing after clearing the old tab
         self.start_processing()
         if self.worker is not None: # Stop buttons appears only if at least one image has been processed
             self.worker.image_processed.connect(lambda *args: 
                 self.update_stop_button(self.worker.count, button_layout) if hasattr(self, "stop_button") and self.stop_button is None else None
             )
-
             self.worker.finished.connect(lambda: self.stop_button.deleteLater() if hasattr(self, "stop_button") and self.stop_button else None)
     
+
     def create_images_tab(self):
         """
         Create a new tab for images
@@ -384,6 +417,7 @@ class ImageProcessingApp(QMainWindow):
 
         return image_layout 
     
+
     def clear_layout(self,layout):
         """
         Helper function to clear all widgets in a layout
@@ -392,13 +426,14 @@ class ImageProcessingApp(QMainWindow):
             child = layout.takeAt(0)
             if child.widget():
                 child.widget().deleteLater()
+
+
     def collect_all_callbacks(self):
         """
         Main method to process mask callbacks and export data.
         Depending on the user selections, this function filters out inactive masks,
         saves the active properties to a CSV file, and/OR generates ROI ZIP files.
         """
-
         save_rois = self.roi_checkbox.isChecked()
         save_csv = self.single_cell_checkbox.isChecked()
         correct_props_df, excluded_props_df = self.filter_active_props()
@@ -407,14 +442,21 @@ class ImageProcessingApp(QMainWindow):
         if save_rois:
             self.save_rois_to_zip(correct_props_df)
 
+
     def filter_active_props(self):
+        """
+        Filters single-cell properties to separate active and inactive object entries.
+
+        Returns:
+            correct_df (pd.DataFrame): DataFrame containing active object properties.
+            excluded (pd.DataFrame): DataFrame of inactive object properties.
+        """
         all_props_df = self.worker.all_props_df.copy()
         all_props_df['combined_key'] = all_props_df['image_name'].astype(str) + '_' + all_props_df['label'].astype(str)
 
-        # Build lookup of all inactive keys
         active_keys = set()
         inactive_keys = set()
-
+        # Collect active/inactive states from all viewers
         for viewer in self.gray_viewers:
             for cb_key, cb_data in viewer.callback_dict.items():
                 if not cb_data.get("is_active"):
@@ -422,14 +464,13 @@ class ImageProcessingApp(QMainWindow):
                     continue
                 active_keys.add(cb_key)
 
-
         correct_df = correct_df = all_props_df[all_props_df.apply(
             lambda r: f"{r['image_name']}_{r['label']}" in active_keys, axis=1
         )]
-
         excluded = all_props_df[all_props_df.apply(
             lambda r: f"{r['image_name']}_{r['label']}" in inactive_keys, axis=1
         )]
+
         return correct_df, excluded
 
     
@@ -441,7 +482,7 @@ class ImageProcessingApp(QMainWindow):
             correct_df (pd.DataFrame): DataFrame of active, valid objects to keep.
             excluded_df (pd.DataFrame): DataFrame of filtered-out (inactive) objects (placeholder, will be overwritten).
         """  
-        # === Step 1: Get currently active (toggled-on) objects from viewers ===
+       # Collect active/inactive keys
         active_keys = set()
         inactive_keys = set()
 
@@ -452,235 +493,266 @@ class ImageProcessingApp(QMainWindow):
                     continue
                 active_keys.add(cb_key)
 
-        # === Step 2: Combine all active + newly merged/drawn/disconnected ===
+        # Integrate newly drawn, merged, or disconnected masks
         combined_df, excluded_df = self.integrate_new_objects(correct_df, active_keys, inactive_keys)
         if self.roi_checkbox.isChecked():
             combined_df = self.add_roi_name_column(combined_df)
             excluded_df = self.add_roi_name_column(excluded_df)
 
-     
+        # Save final CSV files
         output_dir =self.input_form.images_folder_path.text()
         output_csv = os.path.join(output_dir, self.input_form.csv_file_name.text() + '.csv')
         combined_df.to_csv(output_csv, index=False)
 
         excluded_csv = os.path.join(output_dir, 'excluded_objects.csv')
-  
         if not excluded_df.empty:
             excluded_df.to_csv(excluded_csv, index=False)
         else:
             if os.path.exists(excluded_csv):
                 os.remove(excluded_csv)
 
-
-    def save_rois_to_zip(self, correct_df):
+    def gather_active_keys(self):
         """
-        Converts segmentation masks into ROI files and packages them into ZIP archives.
-        
-        Parameters:
-            correct_df (pd.DataFrame): DataFrame containing valid objects to convert into ROIs.
+        Returns a set of active keys across all viewers.
         """
-        # Step 1: Gather active keys from all viewers
         active_keys = set()
         for viewer in self.gray_viewers:
             for cb_key, cb_data in viewer.callback_dict.items():
                 if cb_data.get("is_active", False):
                     active_keys.add(cb_key)
+        return active_keys
+    
+    def prepare_roi_dir(self, folder_path, folder_name):
+        """
+        Prepares the directory for saving ROI files by clearing existing contents.
 
-        # Step 2: Integrate new objects to get combined_df with active masks
-        combined_df, _ = self.integrate_new_objects(correct_df, active_keys, set())
+        Parameters:
+            folder_path (str): Parent directory path.
+            folder_name (str): Subfolder name for ROIs.
 
-        # Step 3: Filter combined_df to only include active masks with valid labels
-        combined_df = combined_df[
-            combined_df.apply(
-                lambda r: f"{r['image_name']}_{r['label']}" in active_keys and pd.notnull(r['label']) and str(r['label']).strip() != '',
+        Returns:
+            str: Full path to the created ROI directory.
+        """
+        roi_dir = os.path.join(folder_path, folder_name)
+        if os.path.exists(roi_dir):
+            shutil.rmtree(roi_dir)
+        # create a fresh directory
+        os.makedirs(roi_dir, exist_ok=True)
+        return roi_dir
+    
+    def filter_active_labels(self, df, active_keys):
+        """
+        Filters a DataFrame to keep only rows with valid, non-empty labels present in active_keys.
+
+        Parameters:
+            df (pd.DataFrame): Input properties DataFrame.
+            active_keys (set): Set of active image_label keys.
+
+        Returns:
+            pd.DataFrame: Filtered DataFrame.
+        """
+        return df[
+            df.apply(
+                lambda r: f"{r['image_name']}_{r['label']}" in active_keys
+                and pd.notnull(r['label'])
+                and str(r['label']).strip() != '',
                 axis=1
             )
         ]
-        # Step 4: Create ROI directory and prepare image masks
-        roi_dir = os.path.join(self.input_form.images_folder_path.text(), self.input_form.roi_folder_name.text())
+    
+    def collect_masks(self, df):
+        """
+        Reconstructs mask arrays for active objects to prepare for ROI export.
 
-        # ✅ Delete existing ROI folder if it exists
-        if os.path.exists(roi_dir):
-            shutil.rmtree(roi_dir)
+        Parameters:
+            df (pd.DataFrame): Filtered properties DataFrame.
 
-        # Then create a fresh directory
-        os.makedirs(roi_dir, exist_ok=True)
+        Returns:
+            image_masks_dict (dict): Dict of image_name → labeled mask array.
+            label_map (dict): Dict of combined_key → label value.
+        """
         image_masks_dict = {}
-
-        # Step 5: Process active masks (individual and merged)
         label_map = {}
-        image_masks_dict = {}
-      
-        for _, row in combined_df.iterrows():
+
+        for _, row in df.iterrows():
             image_name = row['image_name']
-            label = row['label']
-            label_str = str(label)
+            label_str = str(row['label'])
             mask_key = f"{image_name}_{label_str}"
-            
-
-            mask = None
-
-            # === 1. Try to get mask from viewer.new_mask_dict (merged masks) ===
-            for viewer in self.gray_viewers:
-                if mask_key in viewer.new_mask_dict:
-                    mask = viewer.new_mask_dict[mask_key]["mask"]
-                    break
-
-            # === 2. Try to get mask from viewer.callback_dict and reconstruct from worker ===
-            if mask is None:
-                for viewer in self.gray_viewers:
-                    if mask_key in viewer.callback_dict:
-                        cb_data = viewer.callback_dict[mask_key]
-
-                        # Try direct mask in callback
-                        if "mask" in cb_data:
-                            mask = cb_data["mask"]
-                            break
-                        elif "binary_mask" in cb_data:
-                            mask = cb_data["binary_mask"]
-                            break
-                        else:
-                            # Reconstruct from label_mask using cb_data
-                            image_name_cb = cb_data.get("name")
-                            label_cb = cb_data.get("label")
-
-                            if image_name_cb in self.worker.masks_dict:
-                                label_mask = self.worker.masks_dict[image_name_cb]["label_mask"]
-                                mask = (label_mask == int(label_cb)).astype(np.uint8)
-                                break
-
-            # === 3. Skip if mask still not found or empty ===
-            if mask is None:
-                continue
-            if np.sum(mask) == 0:
+            # Retrieve mask from viewer or worker
+            mask = self.get_mask_by_key(mask_key)
+            if mask is None or np.sum(mask) == 0:
                 continue
 
-            # === 4. Assign label value
-            if label_str.startswith("drawn_"):
-                label_value = 3000 + len(label_map) + 1
-            elif '(' in label_str:
-                label_value = 1000 + len(label_map) + 1
-            else:
-                try:
-                    label_value = int(label)
-                except (ValueError, TypeError):
-                    label_value = 2000 + len(label_map) + 1
-
-           
+            label_value = self.assign_label_value(label_str, label_map)
             label_map[mask_key] = label_value
-
-            # === 5. Store mask
+            # Initialize base mask array
             if image_name not in image_masks_dict:
-                shape = self.worker.image_shape
-                image_masks_dict[image_name] = np.zeros(shape, dtype=np.uint16)
+                image_masks_dict[image_name] = np.zeros(self.worker.image_shape, dtype=np.uint16)
 
-            if image_name not in image_masks_dict:
-                    shape = self.worker.image_shape
-                    image_masks_dict[image_name] = np.zeros(shape, dtype=np.uint16)
-
-            # ✅ Resize if needed
+            # Resize to standard shape if necessary
             if mask.shape != self.worker.image_shape:
                 mask = cv2.resize(mask, (self.worker.image_shape[1], self.worker.image_shape[0]), interpolation=cv2.INTER_NEAREST)
 
             image_masks_dict[image_name][mask > 0] = label_value
+
+        return image_masks_dict, label_map
     
-        # Step 6: Generate ROI files for each image
+    def get_mask_by_key(self, mask_key):
+        """
+        Retrieves a mask from either viewer-defined masks or original data.
+
+        Parameters:
+            mask_key (str): Combined image_name and label.
+
+        Returns:
+            np.ndarray or None: Binary mask array.
+        """
+        for viewer in self.gray_viewers:
+            if mask_key in viewer.new_mask_dict:
+                return viewer.new_mask_dict[mask_key]["mask"]
+
+        for viewer in self.gray_viewers:
+            if mask_key in viewer.callback_dict:
+                cb_data = viewer.callback_dict[mask_key]
+                return (
+                    cb_data.get("mask") 
+                    or cb_data.get("binary_mask") 
+                    or self.reconstruct_mask_from_callback(cb_data)
+                )
+        return None
+    
+    def reconstruct_mask_from_callback(self, cb_data):
+        """
+        Reconstructs a mask from label_mask if direct mask is not present.
+
+        Parameters:
+            cb_data (dict): Callback data with image name and label.
+
+        Returns:
+            np.ndarray or None: Binary mask.
+        """
+        image_name = cb_data.get("name")
+        label = cb_data.get("label")
+        if image_name in self.worker.masks_dict:
+            label_mask = self.worker.masks_dict[image_name]["label_mask"]
+            return (label_mask == int(label)).astype(np.uint8)
+        return None
+    
+    def assign_label_value(self, label_str, label_map):
+        """
+        Assigns a unique integer value to a label, used for generating ROIs.
+
+        Parameters:
+            label_str (str): Label string.
+            label_map (dict): Already assigned label map.
+
+        Returns:
+            int: Unique label value.
+        """
+        if label_str.startswith("drawn_"):
+            return 3000 + len(label_map) + 1
+        elif '(' in label_str:
+            return 1000 + len(label_map) + 1
+        try:
+            return int(label_str)
+        except (ValueError, TypeError):
+            return 2000 + len(label_map) + 1
+        
+    def export_rois_to_zip(self, image_masks_dict, label_map, roi_dir):
+        """
+        Exports ROIs from masks as .roi files and packages them into a ZIP archive.
+        """
         for image_name, full_mask in image_masks_dict.items():
+            # Rotate the mask for correct orientation in ImageJ
             rotated_mask = np.rot90(np.flipud(full_mask), k=-1)
             roi_list = []
 
-            labels = []
-            for key in label_map:
-                if key.startswith(image_name + "_"):
-                    labels.append(key[len(image_name)+1:])
-
-
-            for label in labels:
-                mask_key = f"{image_name}_{label}"
-                label_value = label_map.get(mask_key)
-            
-                if label_value is None:
+            for key, label_value in label_map.items():
+                # Match keys that belong to this image
+                if not key.startswith(image_name + "_"):
                     continue
-
+                # Extract label string
+                label = key[len(image_name)+1:]
+                # Generate binary mask for this label
                 binary_mask = (rotated_mask == label_value).astype(np.uint8)
-               
+                # Extract contours (edges of regions)
                 contours = measure.find_contours(binary_mask, 0.5)
 
                 for contour in contours:
                     contour = np.round(contour).astype(np.int32)
                     if contour.shape[0] < 10:
                         continue
+                    # Create ROI object from contour
                     roi = roifile.ImagejRoi.frompoints(contour)
-                    roi_filename = f"{os.path.splitext(image_name)[0]}_label{label}{'_merged' if '(' in label else ''}.roi"
-                    roi_list.append((roi_filename, roi))
+                    # Name ROI file with merged status if applicable
+                    filename = f"{os.path.splitext(image_name)[0]}_label{label}{'_merged' if '(' in label else ''}.roi"
+                    roi_list.append((filename, roi))
+            # Save all ROIs into a zip file
+            zip_path = os.path.join(roi_dir, f"{os.path.splitext(image_name)[0]}.zip")
+            if roi_list:
+                if os.path.exists(zip_path):
+                    os.remove(zip_path)
+                with zipfile.ZipFile(zip_path, 'w') as zipf:
+                    for filename, roi in roi_list:
+                        zipf.writestr(filename, roi.tobytes())
+            else:
+                print(f"No ROIs generated for {image_name}")
 
-                    # Step 7: Save ROIs to ZIP file
-                    zip_path = os.path.join(roi_dir, f"{os.path.splitext(image_name)[0]}.zip")
-                    if roi_list:  # Check if roi_list is non-empty
-                        if os.path.exists(zip_path):
-                            os.remove(zip_path)
-                        with zipfile.ZipFile(zip_path, 'w') as zipf:
-                            for roi_filename, roi in roi_list:
-                                zipf.writestr(roi_filename, roi.tobytes())
-                    else:
-                        print(f"No ROIs generated for {image_name}")
+    def save_rois_to_zip(self, correct_df):
+        """
+        Converts segmentation masks into ROI files and packages them into ZIP archives.
+        """
+        active_keys = self.gather_active_keys()
+        # Merge active + newly created objects
+        combined_df, _ = self.integrate_new_objects(correct_df, active_keys, set())
+        combined_df = self.filter_active_labels(combined_df, active_keys)
+        # Create directory for storing ROI zips
+        roi_dir = self.prepare_roi_dir(
+            self.input_form.images_folder_path.text(), 
+            self.input_form.roi_folder_name.text()
+        )
+        # Extract masks and label mappings
+        image_masks_dict, label_map = self.collect_masks(combined_df)
+        # Export each image’s ROIs to a zip file
+        self.export_rois_to_zip(image_masks_dict, label_map, roi_dir)
 
-
-        # === Remove inactive + reused label rows ===
-    def integrate_new_objects(self, correct_df, active_keys, inactive_keys):
-        if not self.gray_viewers:
-            return self.worker.all_props_df.copy(), pd.DataFrame()
-
-        # Start with a copy of all_props_df
-        all_props_df = self.worker.all_props_df.copy()
-
-        # --- Step 1: Keep only active rows in correct_df ---
-        correct_df = all_props_df[
-        all_props_df.apply(lambda r: f"{r['image_name']}_{r['label']}" in active_keys, axis=1)
-        ].copy()
-       
-        existing_keys = set(correct_df['image_name'].astype(str) + "_" + correct_df['label'].astype(str))
+    def process_merged_masks(self, active_keys, inactive_keys):
+        """
+        Handles merged masks (groups of regions combined into one).
+        """
         new_rows = []
         excluded_rows = []
-        self.worker.masks_dict.clear()
-        merged_keys = set() # Track keys of individual masks in merged groups
+        merged_keys = set()
 
-        # --- Step 3: Add merged group masks ---
         for viewer in self.gray_viewers:
             for group in self.get_merged_groups(viewer):
-                group_items = [
-                viewer.get_item_by_id(mid)
-                for mid in group["mask_ids"]
-                if viewer.get_item_by_id(mid)
-            ]
+                group_items = [viewer.get_item_by_id(mid) for mid in group["mask_ids"] if viewer.get_item_by_id(mid)]
 
                 if not group_items:
-                    continue  # Still skip if nothing was found at all
+                    continue
 
                 image_name = group_items[0].name
                 labels = sorted(str(item.label) for item in group_items)
                 merged_label_str = f"({','.join(labels)})"
                 merged_key = f"{image_name}_{merged_label_str}"
-
-                # Add individual mask keys to merged_keys
+                # Record individual keys used in this merged group
                 for item in group_items:
                     merged_keys.add(f"{image_name}_{item.label}")
 
-                # Determine activity based on constituent masks
+                # Determine whether the group is considered active
                 is_active = all(f"{image_name}_{item.label}" in active_keys for item in group_items)
-
-                # Update callback_dict
                 viewer.callback_dict[merged_key] = {"is_active": is_active}
                 if is_active:
                     active_keys.add(merged_key)
                 else:
                     inactive_keys.add(merged_key)
 
-                # Build merged mask regardless of activity
+                # Create merged mask
                 merged_mask = np.zeros(self.worker.image_shape, dtype=np.uint8)
                 for item in group_items:
                     merged_mask[item.binary_mask > 0] = 1
 
+                # Store new merged mask
                 viewer.new_mask_dict[merged_key] = {
                     "mask": merged_mask,
                     "source": "connect",
@@ -689,26 +761,28 @@ class ImageProcessingApp(QMainWindow):
                 }
                 self.worker.masks_dict[merged_key] = {"mask": merged_mask}
 
-                # Compute properties
+                # Measure region properties of the merged mask
                 intensity_image = self.worker.image_dict.get(image_name)
                 df_props = compute_region_properties(merged_mask, intensity_image=intensity_image)
-
-                # Overwrite label properly
                 df_props['label'] = [merged_label_str] * len(df_props)
                 df_props['image_name'] = image_name
                 df_props['Replicate'] = self.input_form.condition_name.text()
                 df_props['Condition'] = self.input_form.rep_num.text()
 
-
-
-                # Save to new or excluded
                 if is_active:
                     new_rows.append(df_props)
                 else:
                     df_props = pixel_conversion(df_props, float(self.input_form.pixel_rate.text()))
                     excluded_rows.append(df_props)
 
-        # --- Step 4: Add disconnected (ungrouped) masks ---
+        return new_rows, excluded_rows, merged_keys
+    
+    def process_disconnected_masks(self, active_keys, existing_keys):
+        """
+        Processes disconnected masks created by splitting previously merged masks.
+        """
+        new_rows = []
+
         for viewer in self.gray_viewers:
             for key, entry in viewer.new_mask_dict.items():
                 if entry.get("source") != "disconnect":
@@ -735,81 +809,51 @@ class ImageProcessingApp(QMainWindow):
                 df_props['Replicate'] = self.input_form.condition_name.text()
                 df_props['Condition'] = self.input_form.rep_num.text()
 
-
-                if self.roi_checkbox.isChecked():  # or your actual checkbox variable
-                    df_props = self.add_roi_name_column(df_props, is_merged=True)  # or is_disconnected=True or False depending on case
+                if self.roi_checkbox.isChecked():
+                    df_props = self.add_roi_name_column(df_props, is_merged=False)
 
                 new_rows.append(df_props)
-        
-         # --- Step 5: Add drawn masks ---
+        return new_rows
+
+    def process_drawn_masks(self):
+        """
+        Processes user-drawn masks on the canvas.
+        """
+        new_rows = []
         for idx, viewer in enumerate(self.gray_viewers):
             items = viewer.mask_items
             image_name = items[0].name if items else f"viewer_{idx}"
+            min_area = 100
+            # Measure drawn mask regions
+            labeled_mask, drawn_props = self.measure_drawn_objects(viewer)
 
-
-            canvas = viewer.drawing_canvas.toImage()
-            width, height = canvas.width(), canvas.height()
-            ptr = canvas.bits()
-            ptr.setsize(height * width * 4)
-            arr = np.array(ptr).reshape((height, width, 4))
-
-            alpha = (arr[..., 3] >= 200).astype(np.uint8)
-
-
-            kernel_close = np.ones((11, 11), np.uint8)
-            closed = cv2.morphologyEx(alpha, cv2.MORPH_CLOSE, kernel_close) 
-
-            # === Step 2: Find contours on filled mask ===
-            contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-            # === Step 3: Fill contours ===
-            filled_mask = np.zeros_like(alpha, dtype=np.uint8)
-            cv2.drawContours(filled_mask, contours, -1, 1, thickness=-1)  # binary mask (1s)
-
-            # === Step 4: Label and filter regions ===
-            labeled_mask = measure.label(filled_mask)
-            props = measure.regionprops(labeled_mask)
-
-            min_area = 100  # Filter out noise
-            for prop in props:
+            for prop in drawn_props:
                 if prop.area < min_area:
                     continue
 
                 region_mask = (labeled_mask == prop.label).astype(np.uint8)
                 drawn_mask_key = f"{image_name}_drawn_{prop.label}"
 
+                # Store the drawn mask
                 viewer.new_mask_dict[drawn_mask_key] = {
                     "mask": region_mask,
                     "source": "draw",
                     "image_name": image_name
                 }
                 self.worker.masks_dict[drawn_mask_key] = {"mask": region_mask}
-
                 viewer.callback_dict[drawn_mask_key] = {
                     "name": image_name,
                     "label": f"drawn_{prop.label}",
                     "is_active": True,
                     "merged": False
                 }
-                # === Get intensity image ===
+
                 intensity_image = self.worker.image_dict.get(image_name)
-
-               # Make sure intensity_image is grayscale
-                if intensity_image.ndim == 3:
-                    intensity_image = cv2.cvtColor(intensity_image, cv2.COLOR_RGB2GRAY)
-
-                # Resize the mask instead of the image
                 if region_mask.shape != intensity_image.shape:
-                    region_mask = cv2.resize(
-                        region_mask,
-                        (intensity_image.shape[1], intensity_image.shape[0]),
-                        interpolation=cv2.INTER_NEAREST
-                        )
+                    region_mask = cv2.resize(region_mask, (intensity_image.shape[1], intensity_image.shape[0]), interpolation=cv2.INTER_NEAREST)
 
                 labeled_mask = measure.label(region_mask)
                 df_drawn_props = compute_region_properties(labeled_mask, intensity_image=intensity_image)
-               
-
                 df_drawn_props['image_name'] = image_name
                 df_drawn_props['label'] = f"drawn_{prop.label}"
                 df_drawn_props['Replicate'] = self.input_form.condition_name.text()
@@ -819,40 +863,42 @@ class ImageProcessingApp(QMainWindow):
                     df_drawn_props = self.add_roi_name_column(df_drawn_props)
 
                 new_rows.append(df_drawn_props)
-
-        # --- Step 5: Update all_props_df with new rows ---
+        return new_rows
+    
+    def build_combined_and_excluded_df(self, correct_df, new_rows, excluded_rows, inactive_keys, merged_keys):
+        """
+        Builds combined and excluded DataFrames based on mask status.
+        """
         if new_rows:
             new_df = pd.concat(new_rows, ignore_index=True)
             new_df = pixel_conversion(new_df, float(self.input_form.pixel_rate.text()))
-
-            # Get inactive merged keys from excluded_rows (already computed earlier)
-            excluded_keys = set(
+            # Remove rows that match excluded labels
+            excluded_keys = {
                 f"{row['image_name']}_{row['label']}"
                 for df in excluded_rows
                 for _, row in df.iterrows()
-            )
-
-            # Filter them out of new_df before adding to combined
+            }
             new_df = new_df[
                 ~new_df.apply(lambda r: f"{r['image_name']}_{r['label']}" in excluded_keys, axis=1)
             ]
-
             combined_df = pd.concat([correct_df, new_df], ignore_index=True)
-          
         else:
             combined_df = correct_df.copy()
-
-        # --- Step 6: Construct excluded_df for inactive masks ---
-        excluded_df = all_props_df[
-            (all_props_df.apply(lambda r: f"{r['image_name']}_{r['label']}" in inactive_keys, axis=1)) &
-            (~all_props_df.apply(lambda r: f"{r['image_name']}_{r['label']}" in merged_keys, axis=1))
+        # Build excluded DataFrame
+        excluded_df = self.worker.all_props_df[
+            (self.worker.all_props_df.apply(lambda r: f"{r['image_name']}_{r['label']}" in inactive_keys, axis=1)) &
+            (~self.worker.all_props_df.apply(lambda r: f"{r['image_name']}_{r['label']}" in merged_keys, axis=1))
         ].copy()
 
-        # Add inactive merged masks from excluded_rows
         if excluded_rows:
             excluded_df = pd.concat([excluded_df, pd.concat(excluded_rows, ignore_index=True)], ignore_index=True)
 
-        # --- Step 7: Normalize merged labels for consistency ---
+        return combined_df, excluded_df
+
+    def build_group_label_map(self):
+        """
+        Maps individual mask labels to their merged group label string.
+        """
         group_map = {}
         for viewer in self.gray_viewers:
             for group in self.get_merged_groups(viewer):
@@ -868,10 +914,39 @@ class ImageProcessingApp(QMainWindow):
                     group_label = f"({','.join(sorted_labels)})"
                     for lbl in sorted_labels:
                         group_map[(image_name, lbl)] = group_label
+        return group_map
 
+    def integrate_new_objects(self, correct_df, active_keys, inactive_keys):
+        """
+        Integrates newly created/edited masks with the existing dataset.
+        """
+        if not self.gray_viewers:
+            return self.worker.all_props_df.copy(), pd.DataFrame()
+
+        all_props_df = self.worker.all_props_df.copy()
+
+         # Filter only active masks---
+        correct_df = all_props_df[
+        all_props_df.apply(lambda r: f"{r['image_name']}_{r['label']}" in active_keys, axis=1)
+        ].copy()
+
+        existing_keys = set(correct_df['image_name'].astype(str) + "_" + correct_df['label'].astype(str))
+        self.worker.masks_dict.clear()
+        merged_keys = set() # Track keys of individual masks in merged groups
+        
+        # Process all types of masks
+        new_merged_rows, excluded_rows, merged_keys = self.process_merged_masks(active_keys, inactive_keys)
+        new_disconnected_rows = self.process_disconnected_masks(active_keys, existing_keys)
+        new_drawn_rows = self.process_drawn_masks()
+
+        # Combine everything
+        new_rows = new_merged_rows + new_disconnected_rows + new_drawn_rows
+        combined_df, excluded_df = self.build_combined_and_excluded_df(correct_df, new_rows, excluded_rows, inactive_keys, merged_keys)
+
+        group_map = self.build_group_label_map()
         merged_individual_keys = set(group_map.keys())
 
-        # Drop rows from combined_df if they correspond to any individual label that was merged
+        # Drop rows that are replaced by merged entries
         combined_df = combined_df[
             ~combined_df.apply(
                 lambda r: (r['image_name'], str(r['label'])) in merged_individual_keys
@@ -879,7 +954,6 @@ class ImageProcessingApp(QMainWindow):
                 axis=1
             )
         ]
-
         # Do the same for excluded_df (if it's not empty)
         if not excluded_df.empty:
             excluded_df = excluded_df[
@@ -888,15 +962,44 @@ class ImageProcessingApp(QMainWindow):
                     axis=1
                 )
             ]
-
-        #--- Step 8: Final deduplication ---
+        # Final deduplication 
         combined_df = combined_df.drop_duplicates(subset=['image_name', 'label'])
         if not excluded_df.empty:
             excluded_df = excluded_df.drop_duplicates(subset=['image_name', 'label'])
 
         return combined_df, excluded_df
+    
+    def measure_drawn_objects(self, viewer):
+        """
+        Measures regions in the drawing canvas as drawn masks.
+        """
+        canvas = viewer.drawing_canvas.toImage()
+        width, height = canvas.width(), canvas.height()
+        ptr = canvas.bits()
+        ptr.setsize(height * width * 4)
+        arr = np.array(ptr).reshape((height, width, 4))
+        # Extract alpha channel (mask)
+        alpha = (arr[..., 3] >= 200).astype(np.uint8)
+
+         # Morphological closing to fill gaps
+        kernel_close = np.ones((11, 11), np.uint8)
+        closed = cv2.morphologyEx(alpha, cv2.MORPH_CLOSE, kernel_close) 
+
+        # Extract contours, fill them
+        contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        filled_mask = np.zeros_like(alpha, dtype=np.uint8)
+        cv2.drawContours(filled_mask, contours, -1, 1, thickness=-1)
+
+        # Label filled regions and return their properties
+        labeled_mask = measure.label(filled_mask)
+        props = measure.regionprops(labeled_mask)
+        return labeled_mask, props
+
 
     def add_roi_name_column(self, df, is_merged=False, is_disconnected=False):
+        """
+        Generates and adds ROI filenames to the DataFrame.
+        """
         def generate_name(row):
             base = os.path.splitext(str(row['image_name']))[0]
             label = str(row['label'])
@@ -921,9 +1024,7 @@ class ImageProcessingApp(QMainWindow):
         Return list of unique active groups based on `connected_groups` only.
         Ensures no stale or unmerged masks are included.
         """
-        
         grouped = []
-
         for group in viewer.connected_groups:
             group_copy = {
                 "mask_ids": set(group["mask_ids"]),
@@ -935,6 +1036,13 @@ class ImageProcessingApp(QMainWindow):
         return grouped
 
     def start_processing(self):
+        """
+        Initializes and starts image processing workflow:
+        - Clears previous viewers, masks, and UI elements.
+        - Reads all form input values.
+        - Sets up and starts a background worker thread.
+        """
+        # Clear previous image viewers and their associated data
         if hasattr(self, "gray_viewers"):
             for viewer in self.gray_viewers:
                 viewer.connected_groups.clear()
@@ -942,7 +1050,7 @@ class ImageProcessingApp(QMainWindow):
                     viewer.mask_id_to_group.clear()
                 if hasattr(viewer, "new_mask_dict"):
                     viewer.new_mask_dict.clear()
-            self.gray_viewers.clear()  # Remove old viewers
+            self.gray_viewers.clear()
 
         # Clear image layout in GUI
         if self.image_layout is not None:
@@ -950,14 +1058,14 @@ class ImageProcessingApp(QMainWindow):
                 child =  self.image_layout.takeAt(0)
                 if child.widget():
                     child.widget().deleteLater()
-
         self.image_layout = None  # Will be recreated during `create_images_tab()`
 
-        # Reset worker and masks
+        # Clear previous worker and data
         if hasattr(self, "worker"):
             self.worker.masks_dict.clear()
             self.worker.image_dict.clear()
             del self.worker 
+        # Retrieve input from form
         try:
             folder_path = self.input_form.images_folder_path.text()
             csv_file_name = self.input_form.csv_file_name.text()
@@ -967,11 +1075,14 @@ class ImageProcessingApp(QMainWindow):
             main_marker_identifier = self.input_form.unique_main_marker_identifier.text()
             nucleus_identifier = self.input_form.unique_nucleus_identifier.text()
             color = self.input_form.main_marker_channel_dropdown.currentText()
-            # Get values from sliders instead of text fields
+
+            # Get slider values for contrast ranges
             main_marker_contrast_low = self.input_form.main_marker_low_contrast_slider.value()
             main_marker_contrast_high = self.input_form.main_marker_high_contrast_slider.value()
             nucleus_contrast_low = self.input_form.nucleus_low_contrast_slider.value()
             nucleus_contrast_high = self.input_form.nucleus_high_contrast_slider.value()
+
+            # Get numeric parameters
             diam = int(self.input_form.diameter.text())
             flow_thresh = float(self.input_form.flow_threshold.text())
             min_area = int(self.input_form.min_area.text())
@@ -1017,6 +1128,9 @@ class ImageProcessingApp(QMainWindow):
             self.input_form.process_button.setEnabled(True)  # Re-enabling the start button
 
     def update_status_label(self, message):
+        """
+        Updates the processing status message in the UI.
+        """
         self.input_form.processing_label.setText(message)
         
     def show_save_all(self):
@@ -1024,41 +1138,55 @@ class ImageProcessingApp(QMainWindow):
 
     def processing_done(self):
         """
-        Called when processing is finished
+        Called when processing is completed. Re-enables UI components.
         """
         self.processing_in_progress = False
         self.input_form.process_button.setEnabled(True)
      
     def update_progress(self, value):
         """
-        Update progress bar when processing is updated
+        Updates the progress bar based on processing progress.
+
+        Args:
+            value (int): Percent progress value (0-100)
         """
         self.input_form.progress_bar.setValue(value)  # Updating bar with percentage
         self.input_form.progress_bar.setFormat(f"{value}%")  # Display percentage
         self.input_form.progress_bar.repaint()  # Force UI update
 
     def add_images_to_scrollable_area(self, title, pixmap_gray, pixmap_rgb, pixmap_overlay, masks_list):
+        """
+        Adds a processed image set (grayscale, RGB, overlay) with labeled masks into the scroll area.
 
+        Args:
+            title (str): Image name or label
+            pixmap_gray (QPixmap): Grayscale image
+            pixmap_rgb (QPixmap): RGB image
+            pixmap_overlay (QPixmap): Overlay image with segmentation
+            masks_list (list): Segmentation masks for ImageViewer
+        """
         container = QWidget()
         layout = QHBoxLayout()
+
+        # Image display widgets
         label_gray = QLabel()
         label_rgb = QLabel()
         label_overlay = QLabel()
         label_rgb.setScaledContents(True)
         label_overlay.setScaledContents(True)
         label_gray.setScaledContents(True)
+
+        # Resize and set scaled images
         scaled_width = 430 # Target width for each image
         scaled_height = 530  # Target height for each image
-        
-        # Scale all images consistently
         scaled_pixmap_gray = pixmap_gray.scaled(scaled_width, scaled_height, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
         scaled_pixmap_rgb = pixmap_rgb.scaled(scaled_width, scaled_height, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
         scaled_pixmap_overlay = pixmap_overlay.scaled(scaled_width, scaled_height, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-
         label_rgb.setPixmap(scaled_pixmap_rgb)
         label_overlay.setPixmap(scaled_pixmap_overlay)
         label_gray.setPixmap(scaled_pixmap_gray)
 
+        # Setup image viewer for grayscale/masks interaction
         show_labels = self.input_form.cell_labels_checkbox.isChecked()
         font_size = self.input_form.cell_label_font_size_spinbox.value()
         # Using the scaled gray image in ImageViewer
@@ -1067,6 +1195,7 @@ class ImageProcessingApp(QMainWindow):
         controller = self.viewer_mode_controller    
         self.gray_viewer = ImageViewer(scaled_pixmap_gray, masks_list, font_size, show_labels, title, mode_controller=controller)
 
+        # Add to layout
         layout.addWidget(label_rgb)
         layout.addWidget(label_overlay)
         layout.addWidget(self.gray_viewer)
@@ -1093,6 +1222,7 @@ class ImageProcessingApp(QMainWindow):
         """
         if self.help_text.isVisible():
             self.help_text.setVisible(False)
+        event.accept()
 
     def closeEvent(self, event):
         """
@@ -1104,18 +1234,24 @@ class ImageProcessingApp(QMainWindow):
 
 
 class ImageProcessingWorker(QThread):
-    
-    image_processed = pyqtSignal(str, QPixmap, QPixmap, QPixmap, list)
+    """
+    QThread subclass for processing microscopy images using Cellpose segmentation.
+    Emits progress and status updates for integration with a PyQt UI.
+    """
+    # === Signals ===
+    image_processed = pyqtSignal(str, QPixmap, QPixmap, QPixmap, list) # Emits name, grayscale, RGB, overlay, and mask list
     status_update = pyqtSignal(str)  # New signal for status updates
     show_save_all = pyqtSignal() # Signal to show the save all button
     finished_processing = pyqtSignal() # Signal for the end of the process
     progress_updated = pyqtSignal(int) # Signal for a progress bar updates
     
-
     def __init__(self, images, folder_path, condition_name, rep_num, main_marker_identifier, nucleus_identifier,  color,  main_marker_contrast_low,
                  main_marker_contrast_high, nucleus_contrast_low, nucleus_contrast_high,  diam, thresh, min_area, min_non_black_pixels_percentage,
                  intensity_threshold, min_nucleus_pixels_percentage, nucleus_pixel_threshold, pixel_conv_rate, csv_file_name, roi_folder_name, progress_bar, model,
                  nucleus_channel_present=True):
+        """
+        Initializes the worker thread with parameters for image analysis.
+        """
         super().__init__()
         self.folder_path = folder_path
         self.images = images
@@ -1139,20 +1275,26 @@ class ImageProcessingWorker(QThread):
         self.csv_file_name = csv_file_name
         self.roi_folder_name = roi_folder_name
         self.active = True
-        self.count = 0  # Initialize count for processed images
+        self.count = 0  # Count of successfully processed images
         self.progress_bar = progress_bar
         self.model = model
         self.nucleus_channel_present = nucleus_channel_present
-        self.image_dict = {}
-        self.masks_dict = {}
+        self.image_dict = {} # Stores preprocessed main marker images
+        self.masks_dict = {} # Stores predicted masks keyed by image+label
 
     def stop(self):
+        """
+        Stop processing (used by main UI).
+        """
         self.active = False
         
     def run(self):
-        
-        main_marker_channel_value = self.color
-        
+        """
+        Main execution logic for the thread.
+        Performs image preprocessing, segmentation, analysis, and emits results.
+        """
+         # === Preliminary checks ===
+    
         if not self.active:  # Stop processing if active flag is false
             return
         
@@ -1172,7 +1314,8 @@ class ImageProcessingWorker(QThread):
             self.status_update.emit("Please input a replicate number!")
             self.finished_processing.emit() 
             return\
-
+        
+        main_marker_channel_value = self.color
         if main_marker_channel_value == "":
             self.status_update.emit("Please select a valid segmentation marker channel color!")
             self.finished_processing.emit() 
@@ -1194,19 +1337,20 @@ class ImageProcessingWorker(QThread):
             self.finished_processing.emit() 
             return
         
-        # Warning the user if they put in a path for an empty folder
+        # Count only images matching the main marker identifier
         total_images = sum(1 for key in self.images if self.main_marker_identifier in key)
         if total_images == 0:
             self.status_update.emit("No images found in the folder. Check file IDs")
             self.finished_processing.emit() 
             return
         
-        fail = True
+        # === Begin processing ===
         self.status_update.emit("Processing started...")
         self.all_props_df = pd.DataFrame()
         num_images = len(self.images)  # Getting total number of images
         self.masks_dict = {}  # Dictionary to store masks
 
+        fail = True # Indicates whether any images were processed
         for num, (name, image) in enumerate(self.images.items()):
             if not self.active:
                 break
@@ -1214,21 +1358,22 @@ class ImageProcessingWorker(QThread):
             if self.main_marker_identifier in name and self.main_marker_identifier!="" and self.active:
                 main_marker_image_name = name
                 main_marker_image_path = image
+                # Load image shape for future use
                 if not hasattr(self, "image_shape"):
                     image_array = np.array (Image.open(main_marker_image_path))
                     self.image_shape = image_array.shape
+                # === Handle nucleus channel ===
                 if self.nucleus_channel_present:
                     nucleus_name = name.replace(self.main_marker_identifier, self.nucleus_identifier)
                     if (nucleus_name not in self.images or self.nucleus_identifier=="") and (self.active):  # Prevent KeyError
                         self.status_update.emit(f"Missing nucleus image: {nucleus_name}")
                         self.finished_processing.emit()
                         return
-                    
                     nucleus_image_path = self.images[nucleus_name]
  
                 if self.active:
                     try:
-                        # Processing images
+                        # === Preprocessing ===
                         if not self.active:
                             break
                         if self.nucleus_channel_present:
@@ -1249,14 +1394,17 @@ class ImageProcessingWorker(QThread):
                                                                                                         intensity_threshold=self.intensity_threshold,  pixel_conv_rate=self.pixel_conv_rate,
                                                                                                         diam = self.diam,
                                                                                                         nucleus_channel_present=self.nucleus_channel_present)
-
                         if not self.active:
                             break
                         self.image_dict[main_marker_image_name] = main_marker_image.copy()
+
+                        # === Run segmentation model ===
                         predicted_masks, _, _ = self.model.eval(main_marker_image, diameter=diamet, flow_threshold = self.thresh,  channels=[0, marker_channel_color])
 
                         if not self.active:
                             break
+
+                        # === Analyze segmented cells ===
                         df, overlay_image, gray_image, masks_list = analyze_segmented_cells(predicted_masks, main_marker_image, main_marker_image_name, 
                                                                                         pixel_conv_rate=self.pixel_conv_rate,
                                                                                         rgb_image = rgb, min_area = self.min_area,
@@ -1265,14 +1413,14 @@ class ImageProcessingWorker(QThread):
                                                                                         min_nucleus_pixels_percentage=self.min_nucleus_pixels_percentage if self.nucleus_channel_present else None,
                                                                                         nucleus_pixel_threshold=self.nucleus_pixel_threshold if self.nucleus_channel_present else None,
                                                                                         nucleus_channel_present=self.nucleus_channel_present)
-
                         if not self.active:
                             break
-
+                        # Store masks in a dictionary
                         for mask, label in zip(masks_list, df['label']):
                             mask_key = f"{main_marker_image_name}{label}"
                             self.masks_dict[mask_key] = mask
 
+                        # === Normalize images and emit UI updates ===
                         if df is not None and self.active:
                             self.all_props_df = pd.concat([self.all_props_df, df], ignore_index=True)
                             # Normalizing images to uint8
@@ -1284,7 +1432,6 @@ class ImageProcessingWorker(QThread):
 
                             if not self.active:
                                 break
-
                             # Converting processed images to QPixmap
                             pixmap_gray = convert_to_pixmap(gray_image, QImage.Format.Format_Grayscale8)
                             pixmap_rgb = convert_to_pixmap(np.concatenate([rgb, np.full((rgb.shape[0], rgb.shape[1], 1), 255, dtype=np.uint8)], axis=-1), QImage.Format.Format_RGBA8888)
@@ -1296,7 +1443,6 @@ class ImageProcessingWorker(QThread):
                             else:
                                 display_name = f"{main_marker_image_name}: {len(df)} cells processed"
 
-
                             self.image_processed.emit(display_name, pixmap_gray, pixmap_rgb, pixmap_overlay, masks_list)
 
                             self.count += 1
@@ -1304,9 +1450,10 @@ class ImageProcessingWorker(QThread):
                     except Exception as e:
                         print(e)
                         continue  # Moving to the next image
-
+             # === Update progress ===
             self.progress_updated.emit(int(((num + 1) / num_images) * 100))
-          
+        
+        # === Post-processing ===
         if (fail and self.active and self.count >= 1) or (not self.active):
             self.all_props_df = pixel_conversion(self.all_props_df, self.pixel_conv_rate)
             self.status_update.emit(f"Processing completed! {self.count} images processed.")
@@ -1316,7 +1463,8 @@ class ImageProcessingWorker(QThread):
         elif fail:
             self.status_update.emit("No images processed. Please check your input parameters.")
             self.finished_processing.emit() 
- 
+
+ # === Main execution for the app ===
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setStyle(QStyleFactory.create("Fusion"))

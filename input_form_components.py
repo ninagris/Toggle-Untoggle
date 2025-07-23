@@ -364,21 +364,21 @@ class InputFormWidget(QWidget):
         self.model_selector_widget = ModelSelectorWidget(self.font_input)
 
         # Input Fields
-        self.images_folder_path = QLineEdit("/Users/ninagrishencko/Desktop/test_img")
+        self.images_folder_path = QLineEdit("")
         self.csv_file_name = QLineEdit("single_cell_morphology")
         self.roi_folder_name = QLineEdit("ROIs")
-        self.condition_name = QLineEdit("r")
-        self.rep_num = QLineEdit("r")
-        self.unique_main_marker_identifier = QLineEdit("d2")
+        self.condition_name = QLineEdit("")
+        self.rep_num = QLineEdit("")
+        self.unique_main_marker_identifier = QLineEdit("")
         self.unique_nucleus_identifier = QLineEdit("")
-        self.diameter = QLineEdit("20")
+        self.diameter = QLineEdit("15")
         self.flow_threshold = QLineEdit("0.4")
         self.min_area = QLineEdit("150")
         self.min_non_black_pixels_percentage = QLineEdit("10")
         self.intensity_threshold = QLineEdit("70")
         self.min_nucleus_pixels_percentage = QLineEdit("10")
         self.nucleus_pixel_threshold = QLineEdit("200")
-        self.pixel_rate = QLineEdit("0.18") 
+        self.pixel_rate = QLineEdit("") 
 
         # Setting parameters for input fields
         for input_field in [
