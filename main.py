@@ -23,6 +23,10 @@ from image_analysis_pipeline import open_folder, image_preprocessing, analyze_se
 from toggle import ImageViewer, ViewerModeController
 from input_form_components import InputFormWidget, DraggableTextEdit
 
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller bundle """
+    base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base_path, relative_path)
 
 class ImageProcessingApp(QMainWindow):
     def __init__(self):
@@ -366,11 +370,11 @@ class ImageProcessingApp(QMainWindow):
         self.toggle_checkbox = QCheckBox("Toggle")
         self.correction_checkbox = QCheckBox("Connect")
         self.drawing_checkbox = QCheckBox()
-        self.drawing_checkbox.setIcon(QIcon("icons/pen.png"))  # path to your pen icon
+        self.drawing_checkbox.setIcon(QIcon(resource_path("icons/pen.png")))
         self.drawing_checkbox.setIconSize(QSize(25, 25))  # adjust icon size
         self.drawing_checkbox.setText("")
         self.erase_checkbox = QCheckBox()
-        self.erase_checkbox .setIcon(QIcon("icons/eraser.png"))  # path to your pen icon
+        self.erase_checkbox.setIcon(QIcon(resource_path("icons/eraser.png")))
         self.erase_checkbox .setIconSize(QSize(30, 30))  # adjust icon size
         self.erase_checkbox .setText("")
         self.toggle_checkbox.setChecked(True)
@@ -418,6 +422,11 @@ class ImageProcessingApp(QMainWindow):
         return image_layout 
     
 
+    def resource_path(self, relative_path):
+        """ Get absolute path to resource, works for dev and for PyInstaller bundle """
+        base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+        return os.path.join(base_path, relative_path)
+    
     def clear_layout(self,layout):
         """
         Helper function to clear all widgets in a layout
@@ -766,8 +775,9 @@ class ImageProcessingApp(QMainWindow):
                 df_props = compute_region_properties(merged_mask, intensity_image=intensity_image)
                 df_props['label'] = [merged_label_str] * len(df_props)
                 df_props['image_name'] = image_name
-                df_props['Replicate'] = self.input_form.condition_name.text()
-                df_props['Condition'] = self.input_form.rep_num.text()
+                df_props['Replicate'] = self.input_form.rep_num.text()
+                df_props['Condition'] = self.input_form.condition_name.text()
+                
 
                 if is_active:
                     new_rows.append(df_props)
@@ -806,8 +816,9 @@ class ImageProcessingApp(QMainWindow):
                 df_props = compute_region_properties(mask, intensity_image=intensity_image)
                 df_props['label'] = label
                 df_props['image_name'] = image_name
-                df_props['Replicate'] = self.input_form.condition_name.text()
-                df_props['Condition'] = self.input_form.rep_num.text()
+                df_props['Replicate'] = self.input_form.rep_num.text()
+                df_props['Condition'] = self.input_form.condition_name.text()
+                
 
                 if self.roi_checkbox.isChecked():
                     df_props = self.add_roi_name_column(df_props, is_merged=False)
@@ -856,8 +867,9 @@ class ImageProcessingApp(QMainWindow):
                 df_drawn_props = compute_region_properties(labeled_mask, intensity_image=intensity_image)
                 df_drawn_props['image_name'] = image_name
                 df_drawn_props['label'] = f"drawn_{prop.label}"
-                df_drawn_props['Replicate'] = self.input_form.condition_name.text()
-                df_drawn_props['Condition'] = self.input_form.rep_num.text()
+                df_drawn_props['Replicate'] = self.input_form.rep_num.text()
+                df_drawn_props['Condition'] = self.input_form.condition_name.text()
+                
 
                 if self.roi_checkbox.isChecked():
                     df_drawn_props = self.add_roi_name_column(df_drawn_props)

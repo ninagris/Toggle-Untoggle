@@ -5,7 +5,6 @@ package/
 __pycache__/
 *.py[cod]
 *$py.class
-test_img/
 # C extensions
 *.so
 .Rhistory

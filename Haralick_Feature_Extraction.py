@@ -4,6 +4,7 @@ import re
 import os
 import zipfile
 import tempfile
+import argparse
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -30,10 +31,17 @@ from histomicstk.features import compute_haralick_features
 #     └── single_cell_morphology.csv
 # ```
 
-images_dir = input("Please enter the path to your images folder: ")
-roi_dir = input("Please enter the path to your ROI folder: ")
-morph_df_path = input("Please enter the path to your morphology CSV file: ")
-save_path = input("Please enter the path where you want to save the output CSV: ")
+parser = argparse.ArgumentParser(description="Compute Haralick features from ROIs.")
+parser.add_argument('--images_dir', required=True, help='Path to images directory')
+parser.add_argument('--roi_dir', required=True, help='Path to ROI directory')
+parser.add_argument('--morph_df_path', required=True, help='Path to morphology CSV file')
+parser.add_argument('--save_path', required=True, help='Output path for the final CSV')
+args = parser.parse_args()
+
+images_dir = args.images_dir
+roi_dir = args.roi_dir
+morph_df_path = args.morph_df_path
+save_path = args.save_path
 
 morph_df = pd.read_csv(morph_df_path, index_col=False)
 morph_df['image_name'] = morph_df['image_name'].str.replace(r"\.tiff?$", "", flags=re.IGNORECASE, regex=True)
