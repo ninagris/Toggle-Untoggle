@@ -694,7 +694,7 @@ class ImageProcessingApp(QMainWindow):
                     # Create ROI object from contour
                     roi = roifile.ImagejRoi.frompoints(contour)
                     # Name ROI file with merged status if applicable
-                    filename = f"{os.path.splitext(image_name)[0]}_label{label}{'_merged' if '(' in label else ''}.roi"
+                    filename = self.generate_roi_filename(image_name, label)
                     roi_list.append((filename, roi))
             # Save all ROIs into a zip file
             zip_path = os.path.join(roi_dir, f"{os.path.splitext(image_name)[0]}.zip")
@@ -1008,24 +1008,24 @@ class ImageProcessingApp(QMainWindow):
         return labeled_mask, props
 
 
-    def add_roi_name_column(self, df, is_merged=False, is_disconnected=False):
+    def generate_roi_filename(self, image_name, label):
+        base = os.path.splitext(str(image_name))[0]
+        label_str = str(label)
+        if label_str.startswith("drawn_"):
+            return f"{base}_{label_str}.roi"
+        elif "_merged" in label_str or "(merged)" in label_str:
+            return f"{base}_label_{label_str}_merged.roi"
+        elif "_disconnected" in label_str:
+            return f"{base}_label_{label_str}_disconnected.roi"
+        else:
+            return f"{base}_label{label_str}.roi"
+        
+    def add_roi_name_column(self, df):
         """
         Generates and adds ROI filenames to the DataFrame.
         """
-        def generate_name(row):
-            base = os.path.splitext(str(row['image_name']))[0]
-            label = str(row['label'])
-            if is_merged:
-                return f"{base}_label_{label}_merged.roi"
-            elif is_disconnected:
-                return f"{base}_label_{label}_disconnected.roi"
-            elif label.startswith("drawn_"):
-                return f"{base}_label_{label}_drawn.roi"
-            else:
-                return f"{base}_label{label}.roi"
-
         df['roi_name'] = df.apply(
-            lambda r: generate_name(r)
+            lambda r:   self.generate_roi_filename(r['image_name'], r['label'])
             if pd.notnull(r['image_name']) and pd.notnull(r['label']) else "",
             axis=1
         )
