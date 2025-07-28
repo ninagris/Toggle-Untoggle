@@ -1007,7 +1007,6 @@ class ImageProcessingApp(QMainWindow):
         props = measure.regionprops(labeled_mask)
         return labeled_mask, props
 
-
     def generate_roi_filename(self, image_name, label):
         base = os.path.splitext(str(image_name))[0]
         label_str = str(label)
