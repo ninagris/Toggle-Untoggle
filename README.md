@@ -9,15 +9,48 @@ An Interactive Desktop Application for Cell Segmentation and Single-Cell Morphol
 3. Extracts morphological parameters and/or ROIs from the selected cells
 4. Saves the output to the same folder as the input images. 
 
-## Installation instructions
+## Installation Instructions
 
-Note: The package GUI application is currently available only for macOS (M1–M3).
+**Note:** The packaged GUI application is currently available only for macOS (M1–M3).
 
 1. Go to the releases page and download the latest version of the software
 2. Unzip the downloaded file
 3. If your computer prevents the app from opening due to security settings, go to System Settings → Privacy & Security, then allow the app to open under “Apps from unidentified developers”
 
-## Descriptions of the morphological parameters that can be extracted following segmentation
+## Setting Up an Anaconda Environment
+
+**Note:** If you encounter any problems with version incompatibilities or missing packages, try modifying the environment.yml file or install missing packages using pip.
+
+1. **Install Anaconda or Miniconda**  
+   If you haven’t installed it yet, download and install from  
+   [https://www.anaconda.com/products/distribution](https://www.anaconda.com/products/distribution).
+   
+2. **Clone the repository**  
+   Open your terminal or command prompt and run:  
+   ```bash
+   git clone https://github.com/ninagris/Toggle-Untoggle.git
+
+3. **Navigate into the project folder**  
+   Open your terminal or command prompt and run:  
+   ```bash
+   cd Toggle-Untoggle
+
+4. **Create the conda environment from the YAML file**  
+   Open your terminal or command prompt and run:  
+   ```bash
+   conda env create -f environment.yml
+
+5. **Activate the conda environment**  
+   Open your terminal or command prompt and run:  
+   ```bash
+   conda activate toggle-untoggle
+
+6. **Launch the application**  
+   Open your terminal or command prompt and run:  
+   ```bash
+   python main.py
+
+## Descriptions Of the Morphological Parameters That Can Be Extracted Following Segmentation
 
 **Note:** All distance and area measurements are reported in microns (µm) or square microns (µm²), based on the pixel-to-micron scale (0-2) provided during segmentation. Parameters are calculated using the `regionprops` function from the [scikit-image](https://scikit-image.org/docs/0.24.x/api/skimage.measure.html#skimage.measure.regionprops) library.
 
@@ -38,8 +71,7 @@ Note: The package GUI application is currently available only for macOS (M1–M3
 • **Perimeter_crofton**: perimeter of object approximated by the Crofton formula in 4 directions.  
 • **Solidity**: ratio of pixels in the region to pixels of the convex hull image.
 
-
-## Post-processing manipulations (optional):
+## Post-Processing Manipulations (optional):
 
 –Haralick texture features extraction:
 1. Install Anaconda or Miniconda (https://www.anaconda.com/products/distribution) if you haven't done so yet
