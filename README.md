@@ -24,16 +24,16 @@ An Interactive Desktop Application for Cell Segmentation and Single-Cell Morphol
 1. **Install Anaconda or Miniconda**  
    If you haven’t installed it yet, download and install from  
    [https://www.anaconda.com/products/distribution](https://www.anaconda.com/products/distribution).
-   
+
 2. **Clone the repository**  
-   Open your terminal or command prompt and run:  
-   ```bash
-   git clone https://github.com/ninagris/Toggle-Untoggle.git
+   • Go to the repository page in your browser: https://github.com/ninagris/Toggle-Untoggle  
+   • Click the green **Code** button, then select **Download ZIP**  
+   • Once downloaded, unzip the file
 
 3. **Navigate into the project folder**  
-   Open your terminal or command prompt and run:  
+   Open your terminal or command prompt and navigate to the directory where you saved the unzipped file:  
    ```bash
-   cd Toggle-Untoggle
+   cd path/to/Toggle-Untoggle
 
 4. **Create the conda environment from the YAML file**  
    Open your terminal or command prompt and run:  
@@ -49,6 +49,20 @@ An Interactive Desktop Application for Cell Segmentation and Single-Cell Morphol
    Open your terminal or command prompt and run:  
    ```bash
    python main.py
+
+## Combining Multiple .csv files into one
+1. Ensure that python is installed on your machine. You can check this by running python --version or python3 --version in your terminal.
+2. Open a terminal or command prompt.
+3. Navigate to the folder containing your .csv files and combined_csvs.py (part of the repo) using the cd command. Make sure this folder only contains the .csv files you wish to combine.
+```bash
+   cd path/to/my_csv_folder
+4. Install pandas if it isn’t already installed:
+   ```bash
+   pip install pandas
+5. Run the python script (you may need to use python3 instead):
+   ```bash
+   python combined_csvs.py
+6.The combined file named combined.csv will be created in the same folder.
 
 ## Descriptions Of the Morphological Parameters That Can Be Extracted Following Segmentation
 
