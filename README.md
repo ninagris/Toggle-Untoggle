@@ -54,7 +54,7 @@ An Interactive Desktop Application for Cell Segmentation and Single-Cell Morphol
 1. Ensure that python is installed on your machine. You can check this by running python --version or python3 --version in your terminal.
 2. Open a terminal or command prompt.
 3. Navigate to the folder containing your .csv files and combined_csvs.py (part of the repo) using the cd command. Make sure this folder only contains the .csv files you wish to combine.
-```bash
+   ```bash
    cd path/to/my_csv_folder
 4. Install pandas if it isn’t already installed:
    ```bash
@@ -62,7 +62,7 @@ An Interactive Desktop Application for Cell Segmentation and Single-Cell Morphol
 5. Run the python script (you may need to use python3 instead):
    ```bash
    python combined_csvs.py
-6.The combined file named combined.csv will be created in the same folder.
+6. The combined file named combined.csv will be created in the same folder.
 
 ## Descriptions Of the Morphological Parameters That Can Be Extracted Following Segmentation
 
