@@ -144,8 +144,6 @@ The conversion factor from pixels to microns (depends on your microscope setup).
 
 ## Troubleshooting Commonly Encountered Issues
 
-## Troubleshooting Commonly Encountered Issues
-
 | **Issue**                                                                                      | **Suggested Solution**                                                                                         |
 |------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------|
 | Empty images are displayed                                                                     | Increase the segmentation channel intensity threshold and/or the minimum percentage of the image occupied by cells. |
