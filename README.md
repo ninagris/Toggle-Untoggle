@@ -103,7 +103,9 @@ Minimum fluorescence intensity required for a pixel to be included in segmentati
 The conversion factor from pixels to microns (depends on your microscope setup). The allowed input range is [0,2]
 
 **Toggle Mode:** Go through your images and click on the cells you want to exclude from the analysis. Clicking again will re-include the cells, even if you’ve already pressed the save button. Untoggled cells appear dimmer than active ones included in the analysis.
+
 **Connect Mode:** Go through your images and draw a line with your mouse across two or more cells you want to merge. Once the masks share the same color, the cells are considered connected. To disconnect them, draw a line between the same cells again.
+
 **Draw Mode and Erase Mode:** Go through your images and use the pen tool to draw missing cells or the eraser tool to remove cells you've just drawn. Make sure to draw closed shapes to ensure accurate measurements.
 
 ## Combining Multiple .csv files into one
