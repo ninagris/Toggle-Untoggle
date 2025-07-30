@@ -45,7 +45,7 @@ An Interactive Desktop Application for Cell Segmentation and Single-Cell Morphol
    ```bash
    python main.py
 
-## Configuring GUI Parameters:
+## GUI Input Parameters:
 
 1. **Images Folder Path:**
 The path to the folder containing the images. Only single-channel raw images should be included.
