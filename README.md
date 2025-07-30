@@ -144,10 +144,10 @@ The conversion factor from pixels to microns (depends on your microscope setup).
 
 ## Toggle-Untoggle Limitations ⚠️🛠:
 
-•Subjectivity: Manual corrections may introduce user bias.
-•Low throughput: Not well-suited for large-scale screening.
-•Hardware-dependent:  Performance is limited when using only a CPU.
-•Limited cross-platform testing: Primarily tested on macOS; performance on other operating systems is less uncertain.
+• **Subjectivity:** Manual corrections may introduce user bias.
+• **Low throughput:** Not well-suited for large-scale screening.
+• **Hardware-dependent:**  Performance is limited when using only a CPU.
+• **Limited cross-platform testing:** Primarily tested on macOS; performance on other operating systems is less uncertain.
 
 ## Post-Processing Manipulations (optional):
 
