@@ -53,7 +53,9 @@ Files without the .tif, .tiff, .TIF, or .TIFF extensions will be ignored.
 
 **⚠️ Important**:
 –Ensure the folder does not contain both raw and display images; only raw images should be used as input.
+
 –Perform maximum projection or other image preprocessing manipulations before using Toggle-Untoggle.
+
 –If processing both segmentation and nucleus channels, make sure the images appear in matching pairs within the folder. For example:
 
       •ntc 0.3 auto_Top Slide_R_p00_0_A01f04d2.TIF
@@ -70,7 +72,7 @@ where the suffixes like d2 and d0 indicate different channels.
 The desired name for the output .csv file. This is not a file path, just the name without the .csv extension.
 The file will be saved in the Images Folder. The output fle name can be changed to allow for multiple savings.
 
-3.**ROI Folder Name:**
+3. **ROI Folder Name:**
 The desired name for the folder that will contain the ROIs of the selected cells. This is not a folder path, just the name.
 The folder will be created inside the Images Folder. The ROI folder name can be changed to allow for multiple savings.
 
@@ -93,9 +95,13 @@ If checked, labels will be displayed on top of each segmented object using the s
 If checked, additional input fields for specifying the nucleus channel input parameters will be displayed including:
 
    **–Nucleus Channel File ID:** A keyword unique to images containing a nuclear marker (e.g., d0, ch2).
+
    **–Lower Percentile of Pixel Intensities for Nucleus Channel:** Any intensity below this percentile is mapped to 0 (black). Contrast adjustments are for visualization only; fluorescence intensity is extracted from the original images you input.
-   **–Upper Percentile of Pixel Intensities for Nucleus Channel:** Any intensity above this percentile is mapped to 1 (white). 
+
+   **–Upper Percentile of Pixel Intensities for Nucleus Channel:** Any intensity above this percentile is mapped to 1 (white).
+
    **–Minimum Percentage of Cell Area Occupied by Nucleus:** The minimum proportion of the cell's area that must be occupied by nucleus (blue) pixels.
+
    **–Nucleus Channel Intensity Threshold:** Minimum fluorescence intensity for a pixel to be considered part of the nucleus.
 
 10. **Segmentation Channel Color:**
