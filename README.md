@@ -16,9 +16,7 @@
 2. Unzip the downloaded file.
 3. On mac, if your computer prevents the app from opening due to security settings, go to System Settings → Privacy & Security, then allow the app to open under “Apps from unidentified developers”. 
 
-**Windows/Linux users:**
-
-If the GUI application does not open on your system, consider running Toggle-Untoggle in an anaconda virtual environment instead. Instructions for setting up the environment and installing dependencies are provided in the next section. 
+**Windows/Linux users:** If the GUI application does not open on your system, consider running Toggle-Untoggle in an anaconda virtual environment instead. Instructions for setting up the environment and installing dependencies are provided in the next section. 
 
 ## Setting Up an Anaconda Environment
 
