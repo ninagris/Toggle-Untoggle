@@ -79,14 +79,14 @@ If checked, labels will be displayed on top of each segmented object using the s
 9. **Nucleus Channel Present:**
 If checked, additional input fields for specifying the nucleus channel input parameters will be displayed including:
    **–Nucleus Channel File ID:** A keyword unique to images containing a nuclear marker (e.g., d0, ch2).
-   **–Lower Percentile of Pixel Intensities for Nucleus Channel:** Any intensity below this percentile is mapped to 0 (black). Contrast adjustments are for visualization only; fluorescence intensity is extracted from raw images you input.
+   **–Lower Percentile of Pixel Intensities for Nucleus Channel:** Any intensity below this percentile is mapped to 0 (black). Contrast adjustments are for visualization only; fluorescence intensity is extracted from the original images you input.
    **–Upper Percentile of Pixel Intensities for Nucleus Channel:** Any intensity above this percentile is mapped to 1 (white). 
    **–Minimum Percentage of Cell Area Occupied by Nucleus:** The minimum proportion of the cell's area that must be occupied by nucleus (blue) pixels.
    **–Nucleus Channel Intensity Threshold:** Minimum fluorescence intensity for a pixel to be considered part of the nucleus.
 10. **Segmentation Channel Color:**
 The color of the segmentation channel for display (choose from dropdown). The color is only used for the isualization purposes.
 11. **Lower Percentile of Pixel Intensities for Segmentation Marker Channel:**
-Any intensity below this percentile is mapped to 0 (black). Contrast adjustments are for visualization only; fluorescence intensity is extracted from raw images you input.
+Any intensity below this percentile is mapped to 0 (black). Contrast adjustments are for visualization only; fluorescence intensity is extracted from the original images that you input.
 12. **Upper Percentile of Pixel Intensities for Segmentation Marker Channel:**
 Any intensity above this percentile is mapped to 1 (white).
 13. **Average Cell Diameter:**
@@ -102,6 +102,10 @@ Minimum fluorescence intensity required for a pixel to be included in segmentati
 18. **Pixel-to-Micron Ratio:**
 The conversion factor from pixels to microns (depends on your microscope setup). The allowed input range is [0,2]
 
+**Toggle Mode:** Go through your images and click on the cells you want to exclude from the analysis. Clicking again will re-include the cells, even if you’ve already pressed the save button. Untoggled cells appear dimmer than active ones included in the analysis.
+**Connect Mode:** Go through your images and draw a line with your mouse across two or more cells you want to merge. Once the masks share the same color, the cells are considered connected. To disconnect them, draw a line between the same cells again.
+**Draw Mode and Erase Mode:** Go through your images and use the pen tool to draw missing cells or the eraser tool to remove cells you've just drawn. Make sure to draw closed shapes to ensure accurate measurements.
+
 ## Combining Multiple .csv files into one
 1. Ensure that python is installed on your machine. You can check this by running python --version or python3 --version in your terminal.
 2. Open a terminal or command prompt.
@@ -116,7 +120,7 @@ The conversion factor from pixels to microns (depends on your microscope setup).
    python combined_csvs.py
 6. The combined file named combined.csv will be created in the same folder.
 
-## Descriptions Of the Morphological Parameters That Can Be Extracted Following Segmentation
+## Descriptions Of the Morphological Parameters Extracted Following Segmentation
 
 **Note:** All distance and area measurements are reported in microns (µm) or square microns (µm²), based on the pixel-to-micron scale (0-2) provided during segmentation. Parameters are calculated using the `regionprops` function from the [scikit-image](https://scikit-image.org/docs/0.24.x/api/skimage.measure.html#skimage.measure.regionprops) library.
 
