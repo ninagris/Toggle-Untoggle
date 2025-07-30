@@ -1,9 +1,8 @@
 ![Logo](https://github.com/ninagris/Toggle-Untoggle/blob/main/icons/logo.png)
 
-An Interactive Desktop Application for Cell Segmentation and Single-Cell Morphological Parameter Extraction
+**An Interactive Desktop Application for Cell Segmentation and Single-Cell Morphological Analysis**
 
-"Toggle-Untoggle" workflow:
-
+**"Toggle-Untoggle" workflow:**
 1. Accepts a single channel (single fluorescence marker or phase-contrast images) or separate pairs of images for the segmentation marker channel and the nucleus channel as input.
 2. Segments cells in the images using the cyto3, nuclei, or a custom Cellpose model imported by the user.
 3. Extracts morphological parameters and/or ROIs from the selected cells
