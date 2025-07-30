@@ -1,11 +1,11 @@
 ![Logo](https://github.com/ninagris/Toggle-Untoggle/blob/main/icons/logo.png)
 
-**An Interactive Desktop Application for Cell Segmentation and Single-Cell Morphological Analysis**
+## An Interactive Desktop Application for Cell Segmentation and Single-Cell Morphological Analysis
 
 **"Toggle-Untoggle" workflow:**
-1. Accepts a single channel (single fluorescence marker or phase-contrast images) or separate pairs of images for the segmentation marker channel and the nucleus channel as input.
+1. Accepts single-channel images (e.g., single fluorescence marker or phase-contrast) or separate image pairs for the segmentation marker channel and the nucleus channel.
 2. Segments cells in the images using the cyto3, nuclei, or a custom Cellpose model imported by the user.
-3. Extracts morphological parameters and/or ROIs from the selected cells
+3. Extracts morphological parameters and/or ROIs from the selected cells.
 4. Saves the output to the same folder as the input images. 
 
 ## Installation Instructions
@@ -17,8 +17,6 @@
 3. If your computer prevents the app from opening due to security settings, go to System Settings → Privacy & Security, then allow the app to open under “Apps from unidentified developers”
 
 ## Setting Up an Anaconda Environment
-
-**Note:** If you encounter any problems with version incompatibilities or missing packages, try modifying the environment.yml file or install missing packages using pip.
 
 1. **Install Anaconda or Miniconda**  
    If you haven’t installed it yet, download and install from  
@@ -44,12 +42,15 @@
    ```bash
    python main.py
 
+**Note:** If you encounter any problems with version incompatibilities or missing packages, try modifying the environment.yml file or install missing packages using pip.
+
 ## GUI Input Parameters:
 
 1. **Images Folder Path:**
 The path to the folder containing the images. Only single-channel raw images should be included.
 If multi-channel images with the same file IDs are present, you may see a “No images have been processed” message.
 Files without the .tif, .tiff, .TIF, or .TIFF extensions will be ignored.
+
 **⚠️ Important**:
 –Ensure the folder does not contain both raw and display images; only raw images should be used as input.
 –Perform maximum projection or other image preprocessing manipulations before using Toggle-Untoggle.
@@ -77,11 +78,17 @@ A keyword unique to images containing a segmentation marker (e.g., d2, ch1).
 If checked, labels will be displayed on top of each segmented object using the specified font for the digits.
 9. **Nucleus Channel Present:**
 If checked, additional input fields for specifying the nucleus channel input parameters will be displayed including:
+
    **–Nucleus Channel File ID:** A keyword unique to images containing a nuclear marker (e.g., d0, ch2).
+
    **–Lower Percentile of Pixel Intensities for Nucleus Channel:** Any intensity below this percentile is mapped to 0 (black). Contrast adjustments are for visualization only; fluorescence intensity is extracted from the original images you input.
+
    **–Upper Percentile of Pixel Intensities for Nucleus Channel:** Any intensity above this percentile is mapped to 1 (white). 
+
    **–Minimum Percentage of Cell Area Occupied by Nucleus:** The minimum proportion of the cell's area that must be occupied by nucleus (blue) pixels.
+
    **–Nucleus Channel Intensity Threshold:** Minimum fluorescence intensity for a pixel to be considered part of the nucleus.
+
 10. **Segmentation Channel Color:**
 The color of the segmentation channel for display (choose from dropdown). The color is only used for the isualization purposes.
 11. **Lower Percentile of Pixel Intensities for Segmentation Marker Channel:**
@@ -164,7 +171,7 @@ The conversion factor from pixels to microns (depends on your microscope setup).
 - **Hardware-dependent:** Performance is limited when using only a CPU.  
 - **Limited cross-platform testing:** Primarily tested on macOS; performance on other operating systems is uncertain.
 
-## Post-Processing Manipulations (optional):
+## Optional Post-Processing Manipulations:
 
 –Haralick texture features extraction:
 1. Install Anaconda or Miniconda (https://www.anaconda.com/products/distribution) if you haven't done so yet
