@@ -51,12 +51,13 @@ The path to the folder containing the images. Only single-channel raw images sho
 If multi-channel images with the same file IDs are present, you may see a “No images have been processed” message.
 Files without the .tif, .tiff, .TIF, or .TIFF extensions will be ignored.
 
-**⚠️ Important**:
-–Ensure the folder does not contain both raw and display images; only raw images should be used as input.
+   **⚠️ Important**:
 
-–Perform maximum projection or other image preprocessing manipulations before using Toggle-Untoggle.
+   –Ensure the folder does not contain both raw and display images; only raw images should be used as input.
 
-–If processing both segmentation and nucleus channels, make sure the images appear in matching pairs within the folder. For example:
+   –Perform maximum projection or other image preprocessing manipulations before using Toggle-Untoggle.
+
+   –If processing both segmentation and nucleus channels, make sure the images appear in matching pairs within the folder. For example:
 
       •ntc 0.3 auto_Top Slide_R_p00_0_A01f04d2.TIF
 
@@ -66,7 +67,7 @@ Files without the .tif, .tiff, .TIF, or .TIFF extensions will be ignored.
 
       •ntc 0.3 auto_Top Slide_R_p00_0_A01f38d0.TIF
 
-where the suffixes like d2 and d0 indicate different channels. 
+   where the suffixes like d2 and d0 indicate different channels. 
 
 2. **Output File Name:**
 The desired name for the output .csv file. This is not a file path, just the name without the .csv extension.
