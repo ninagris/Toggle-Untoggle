@@ -10,11 +10,11 @@
 
 ## Installation Instructions
 
-**Note:** The packaged GUI application can currently be run without external hardware only on macOS (M1–M3), as it relies on embedded GPU resources available on these devices. 
+**Note:** The packaged GUI application can currently be run without external hardware only on macOS (M1–M3), as it relies on embedded GPU resources available on these devices. Running Toggle-Untoggle on Windows or Linux requires external GPU support. 
 
-1. Go to the releases page and download the latest version of the software
-2. Unzip the downloaded file
-3. If your computer prevents the app from opening due to security settings, go to System Settings → Privacy & Security, then allow the app to open under “Apps from unidentified developers”
+1. Go to the releases page and download the latest version of the software for your OS.
+2. Unzip the downloaded file.
+3. On mac, if your computer prevents the app from opening due to security settings, go to System Settings → Privacy & Security, then allow the app to open under “Apps from unidentified developers”. 
 
 ## Setting Up an Anaconda Environment
 
