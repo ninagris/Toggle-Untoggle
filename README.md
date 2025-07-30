@@ -10,7 +10,7 @@
 
 ## Installation Instructions
 
-**Note:** The packaged GUI application is currently available only for macOS (M1–M3).
+**Note:** The packaged GUI application can currently be run without external hardware only on macOS (M1–M3), as it relies on embedded GPU resources available on these devices. 
 
 1. Go to the releases page and download the latest version of the software
 2. Unzip the downloaded file
@@ -141,6 +141,23 @@ The conversion factor from pixels to microns (depends on your microscope setup).
 • **Perimeter**: perimeter of object which approximates the contour as a line through the centers of border pixels using a 4-connectivity.  
 • **Perimeter_crofton**: perimeter of object approximated by the Crofton formula in 4 directions.  
 • **Solidity**: ratio of pixels in the region to pixels of the convex hull image.
+
+## Troubleshooting Commonly Encountered Issues
+
+## Troubleshooting Commonly Encountered Issues
+
+| **Issue**                                                                                      | **Suggested Solution**                                                                                         |
+|------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------|
+| Empty images are displayed                                                                     | Increase the segmentation channel intensity threshold and/or the minimum percentage of the image occupied by cells. |
+| Sluggish performance or frequent freezing                                                      | Use additional GPU resources if available.                                                                    |
+| Tiny objects that are not cells are segmented                                                  | Increase the minimum cell area.                                                                               |
+| Too few cells are detected                                                                     | Increase the `flow_threshold` and/or adjust the average cell diameter.                                        |
+| Many incorrectly detected cells                                                                | Decrease the `flow_threshold` and/or adjust the average cell diameter.                                        |
+| Freezing after processing a certain percentage of images on macOS native GPU                  | Split images into separate folders and process in smaller batches, or use additional GPU resources.           |
+| Drawn ROI measurements appear unrealistically large or small                                   | Ensure ROIs are drawn as enclosed objects as accurately as possible.                                          |
+| Display color images are too dim or over-saturated                                             | Adjust the maximum and/or minimum percentile for the corresponding channel using the sliders.                |
+
+
 
 ## Toggle-Untoggle Limitations ⚠️🛠:
 
