@@ -8,8 +8,7 @@
 3. Extracts morphological parameters and/or ROIs from the selected cells.
 4. Saves the output to the same folder as the input images. 
 
-### Citation
-
+### Citation:
 If you use this software for your research, please cite:
 
 **Toggle-Untoggle: A cell segmentation tool with an interactive user verification interface**  
@@ -108,15 +107,15 @@ If checked, labels will be displayed on top of each segmented object using the s
 10. **Nucleus Channel Present:**
 If checked, additional input fields for specifying the nucleus channel input parameters will be displayed including:
 
-   **–Nucleus Channel File ID:** A keyword unique to images containing a nuclear marker (e.g., d0, ch2).
+      **–Nucleus Channel File ID:** A keyword unique to images containing a nuclear marker (e.g., d0, ch2).
 
-   **–Lower Percentile of Pixel Intensities for Nucleus Channel:** Any intensity below this percentile is mapped to 0 (black). Contrast adjustments are for visualization only; fluorescence intensity is extracted from the original images you input.
+      **–Lower Percentile of Pixel Intensities for Nucleus Channel:** Any intensity below this percentile is mapped to 0 (black). Contrast adjustments are for visualization only; fluorescence intensity is extracted from the original images you input.
 
-   **–Upper Percentile of Pixel Intensities for Nucleus Channel:** Any intensity above this percentile is mapped to 1 (white).
+      **–Upper Percentile of Pixel Intensities for Nucleus Channel:** Any intensity above this percentile is mapped to 1 (white).
 
-   **–Minimum Percentage of Cell Area Occupied by Nucleus:** The minimum proportion of the cell's area that must be occupied by nucleus (blue) pixels.
+      **–Minimum Percentage of Cell Area Occupied by Nucleus:** The minimum proportion of the cell's area that must be occupied by nucleus (blue) pixels.
 
-   **–Nucleus Channel Intensity Threshold:** Minimum fluorescence intensity for a pixel to be considered part of the nucleus.
+      **–Nucleus Channel Intensity Threshold:** Minimum fluorescence intensity for a pixel to be considered part of the nucleus.
 
 11. **Segmentation Channel Color:**
 The color of the segmentation channel for display (choose from dropdown). The color is only used for the isualization purposes.
