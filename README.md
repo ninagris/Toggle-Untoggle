@@ -13,8 +13,7 @@
 If you use this software for your research, please cite:
 
 **Toggle-Untoggle: A cell segmentation tool with an interactive user verification interface**  
-*Nina Grishchenko, Margarita Byrsan, Michael F. Olson*  
-bioRxiv 2025.05.21.655178;  
+*Nina Grishchenko, Margarita Byrsan, Michael F. Olson* bioRxiv 2025.05.21.655178;  
 doi: [https://doi.org/10.1101/2025.05.21.655178](https://doi.org/10.1101/2025.05.21.655178)
 
 ## Installation Instructions
