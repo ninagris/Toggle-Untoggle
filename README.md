@@ -8,6 +8,15 @@
 3. Extracts morphological parameters and/or ROIs from the selected cells.
 4. Saves the output to the same folder as the input images. 
 
+### Citation
+
+If you use this software for your research, please cite:
+
+**Toggle-Untoggle: A cell segmentation tool with an interactive user verification interface**  
+*Nina Grishchenko, Margarita Byrsan, Michael F. Olson*  
+bioRxiv 2025.05.21.655178;  
+doi: [https://doi.org/10.1101/2025.05.21.655178](https://doi.org/10.1101/2025.05.21.655178)
+
 ## Installation Instructions
 
 **Note:** The packaged GUI application can currently be run without external hardware only on macOS (M1–M3), as it relies on embedded GPU resources available on these devices. Running Toggle-Untoggle on Windows or Linux requires external GPU support. 
@@ -82,19 +91,22 @@ The folder will be created inside the Images Folder. The ROI folder name can be 
 4. **Cellpose Model:**
 Select one of the available options or enter the path to your custom pre-trained model saved locally. Refer to [Cellpose guidelines](https://rdcu.be/eypEB) on how to train your own model.
 
-5. **Condition Name:**
+5. **GPU Resources Available:**
+If checked, the segmentation process will run using the GPU. Always enable this option on Mac (M1–M3). Running on CPU may cause significant delays and GUI freezing, especially with high-magnification images (e.g., 63X).
+
+6. **Condition Name:**
 Additional column with the specified condition/treatment/experiment name that will be added to the .csv file. 
 
-6. **Replicate #:**
+7. **Replicate #:**
 Additional column with the replicate number specified that will be added to the .csv file.
 
-7. **Segmentation Channel File ID:**
+8. **Segmentation Channel File ID:**
 A keyword unique to images containing a segmentation marker (e.g., d2, ch1). 
 
-8. **Display Cell Labels:**
+9. **Display Cell Labels:**
 If checked, labels will be displayed on top of each segmented object using the specified font for the digits.
 
-9. **Nucleus Channel Present:**
+10. **Nucleus Channel Present:**
 If checked, additional input fields for specifying the nucleus channel input parameters will be displayed including:
 
    **–Nucleus Channel File ID:** A keyword unique to images containing a nuclear marker (e.g., d0, ch2).
@@ -107,23 +119,23 @@ If checked, additional input fields for specifying the nucleus channel input par
 
    **–Nucleus Channel Intensity Threshold:** Minimum fluorescence intensity for a pixel to be considered part of the nucleus.
 
-10. **Segmentation Channel Color:**
+11. **Segmentation Channel Color:**
 The color of the segmentation channel for display (choose from dropdown). The color is only used for the isualization purposes.
-11. **Lower Percentile of Pixel Intensities for Segmentation Marker Channel:**
+12. **Lower Percentile of Pixel Intensities for Segmentation Marker Channel:**
 Any intensity below this percentile is mapped to 0 (black). Contrast adjustments are for visualization only; fluorescence intensity is extracted from the original images that you input.
-12. **Upper Percentile of Pixel Intensities for Segmentation Marker Channel:**
+13. **Upper Percentile of Pixel Intensities for Segmentation Marker Channel:**
 Any intensity above this percentile is mapped to 1 (white).
-13. **Average Cell Diameter:**
+14. **Average Cell Diameter:**
 The typical cell diameter in microns. 
-14. **Flow Threshold:**
+15. **Flow Threshold:**
 Maximum allowed flow error per segmented mask. 
-15. **Minimum Cell Area:**
+16. **Minimum Cell Area:**
 Minimum area (in microns²) for a segmented object to be considered a valid cell.
-16. **Minimum Percentage of Image Occupied by Cells:**
+17. **Minimum Percentage of Image Occupied by Cells:**
 Minimum proportion of the image that must be covered by cells. 
-17. **Segmentation Channel Intensity Threshold:**
+18. **Segmentation Channel Intensity Threshold:**
 Minimum fluorescence intensity required for a pixel to be included in segmentation. 
-18. **Pixel-to-Micron Ratio:**
+19. **Pixel-to-Micron Ratio:**
 The conversion factor from pixels to microns (depends on your microscope setup). The allowed input range is [0,2]
 
 **Toggle Mode:** Go through your images and click on the cells you want to exclude from the analysis. Clicking again will re-include the cells, even if you’ve already pressed the save button. Untoggled cells appear dimmer than active ones included in the analysis.
@@ -179,7 +191,6 @@ The conversion factor from pixels to microns (depends on your microscope setup).
 | Freezing after processing a certain percentage of images on macOS native GPU                  | Split images into separate folders and process in smaller batches, or use additional GPU resources.           |
 | Drawn ROI measurements appear unrealistically large or small                                   | Ensure ROIs are drawn as enclosed objects as accurately as possible.                                          |
 | Display color images are too dim or over-saturated                                             | Adjust the maximum and/or minimum percentile for the corresponding channel using the sliders.                |
-
 
 
 ## Toggle-Untoggle Limitations ⚠️🛠:

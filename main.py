@@ -8,6 +8,7 @@ import zipfile
 import cv2
 import os
 import shutil
+import platform
 
 from skimage import measure
 from cellpose import models
@@ -134,7 +135,13 @@ class ImageProcessingApp(QMainWindow):
             mode = 'erase'
 
         self.viewer_mode_controller.set_mode(mode)  
-    
+
+    def is_gpu_available(self):
+        if torch.cuda.is_available():
+            return True
+        elif torch.backends.mps.is_available():  # macOS Metal support
+            return True
+        return False
 
     def handle_model_selection(self, model_type: str, custom_path: str):
         """
@@ -142,21 +149,28 @@ class ImageProcessingApp(QMainWindow):
         """
         self.model = None # Clear previous model
         try:
-            # No model selected
-            if model_type == "" and not custom_path.strip():
-                raise ValueError("Please input a valid path to the custom model.")
+            # Get user GPU preference from checkbox
+            user_wants_gpu = self.input_form.GPU_checkbox.isChecked()
+            gpu_available = self.is_gpu_available()
+            use_gpu = user_wants_gpu and gpu_available
 
-            if custom_path: # Load custom model from file
-                if not os.path.exists(custom_path):
-                    raise ValueError("Custom model path does not exist.")
-                self.model = models.CellposeModel(gpu=True, pretrained_model=custom_path)
+            if user_wants_gpu and not gpu_available:
+                self.update_status_label("You selected GPU usage, but no compatible GPU is available. Falling back to CPU.")
 
-            elif model_type in ["cyto", "cyto2", "cyto3", "nuclei"]:  # Load built-in model
-                self.model = models.CellposeModel(gpu=True, model_type=model_type)
-
+            # Load model
+            if custom_path:
+                self.model = models.CellposeModel(gpu=use_gpu and torch.cuda.is_available(),
+                                                pretrained_model=custom_path)
+            elif model_type in ["cyto3", "nuclei", "livecell_cp3"]:
+                self.model = models.CellposeModel(gpu=use_gpu and torch.cuda.is_available(),
+                                                model_type=model_type)
             else:
                 raise ValueError("Invalid model type selection.")
-            self.model.device = torch.device("mps")
+
+            # Manually set to MPS if requested and available
+            if use_gpu and platform.system() == 'Darwin' and hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                self.model.device = torch.device("mps")
+
 
         except Exception as e:
             self.model = None

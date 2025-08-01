@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import QLineEdit, QScrollArea, QComboBox, QTextEdit
 from PyQt6.QtWidgets import QGridLayout, QSizePolicy, QProgressBar, QSlider, QCheckBox
 from PyQt6.QtGui import QFont
 from PyQt6.QtCore import Qt, pyqtSignal, QPoint
+from cellpose import core
 
 
 class ModelSelectorWidget(QWidget):
@@ -23,7 +24,7 @@ class ModelSelectorWidget(QWidget):
         self.setMaximumHeight(40)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.model_dropdown = QComboBox()
-        self.model_dropdown.addItems(["cyto3", "nuclei", "custom model"])
+        self.model_dropdown.addItems(["cyto3", "nuclei","livecell_cp3", "custom model"])
         self.model_dropdown.setCurrentText("cyto3")
         self.model_dropdown.setFont(font)
         self.model_dropdown.setMinimumHeight(25)
@@ -450,12 +451,23 @@ class InputFormWidget(QWidget):
         self.form_layout.setSpacing(10)
         self.form_layout.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.form_layout.setFormAlignment(Qt.AlignmentFlag.AlignLeft)
+        
+        # GPU checkbox
+        GPU_checkbox_label = QLabel(f"{self.input_row_count}. GPU resources available")
+        GPU_checkbox_label.setFont(self.font_label)
+        # Create checkbox and set its state based on GPU availability
+        self.GPU_checkbox = QCheckBox()
+        self.GPU_checkbox.setStyleSheet("QCheckBox::indicator { width: 25px; height: 25px; }")
+        # Check for GPU availability
+        gpu_available = core.use_gpu()
+        self.GPU_checkbox.setChecked(gpu_available)
 
         # Add first 6 rows in order
         self.add_row("Images Folder Path:", self.images_folder_path)
         self.add_row("Output File Name:", self.csv_file_name)
         self.add_row("ROI Folder Name:", self.roi_folder_name)
         self.add_row("Cellpose Model:", self.model_selector_widget)
+        self.add_row("GPU Resources Available:", self.GPU_checkbox)
         self.add_row("Condition Name:", self.condition_name)
         self.add_row("Replicate #:", self.rep_num)
         self.add_row("Segmentation Channel File ID:", self.unique_main_marker_identifier)
@@ -647,38 +659,40 @@ class InputFormWidget(QWidget):
 
             "<b>4. Cellpose Model:</b> Select one of the available options or enter the path to your custom pre-trained model saved locally.<br><br>"
 
-            "<b>5. Condition Name:</b> Additional column with the specified condition that will be added to the .csv file.<br><br>"
+            "<b>5. GPU Resources Available:</b> If checked, the segmentation process will run using the GPU. Always enable this option on Mac (M1–M3).<br><br>"
 
-            "<b>6. Replicate #:</b> Additional column with the replicate # specified that will be added to the .csv file.<br><br>"
+            "<b>6. Condition Name:</b> Additional column with the specified condition that will be added to the .csv file.<br><br>"
 
-            "<b>7. Segmentation Channel File ID:</b> A keyword unique to images containing a segmentation marker (e.g., d2, ch1).<br><br>"
+            "<b>7. Replicate #:</b> Additional column with the replicate # specified that will be added to the .csv file.<br><br>"
 
-            "<b>8. Display Cell Labels:</b> If checked, labels will be displayed on top of each segmented object using the specified font for the digits.<br><br>"
+            "<b>8. Segmentation Channel File ID:</b> A keyword unique to images containing a segmentation marker (e.g., d2, ch1).<br><br>"
 
-            "<b>9. Nucleus Channel Present:</b> If checked, additional input fields for specifying the nucleus channel input parameters will be displayed including:<br>"
+            "<b>9. Display Cell Labels:</b> If checked, labels will be displayed on top of each segmented object using the specified font for the digits.<br><br>"
+
+            "<b>10. Nucleus Channel Present:</b> If checked, additional input fields for specifying the nucleus channel input parameters will be displayed including:<br>"
             "&emsp;<b>- Nucleus Channel File ID:</b> A keyword unique to images containing a nuclear marker (e.g., d0, ch2).<br>"
             "&emsp;<b>- Lower Percentile of Pixel Intensities for Nucleus Channel:</b> Any intensity below this percentile is mapped to 0 (black). Contrast adjustments are for visualization only; fluorescence intensity is extracted from raw images.<br>"
             "&emsp;<b>- Upper Percentile of Pixel Intensities for Nucleus Channel:</b> Any intensity above this percentile is mapped to 1 (white).<br>"
             "&emsp;<b>- Minimum Percentage of Cell Area Occupied by Nucleus:</b> The minimum proportion of the cell's area that must be occupied by nucleus pixels.<br>"
             "&emsp;<b>- Nucleus Channel Intensity Threshold:</b> Minimum fluorescence intensity for a pixel to be considered part of the nucleus.<br><br>"
 
-            "<b>10. Segmentation Channel Color:</b> The color of the segmentation channel for display (choose from dropdown).<br><br>"
+            "<b>11. Segmentation Channel Color:</b> The color of the segmentation channel for display (choose from dropdown).<br><br>"
 
-            "<b>11. Lower Percentile of Pixel Intensities for Segmentation Marker Channel:</b> Any intensity below this percentile is mapped to 0 (black). Contrast adjustments are for visualization only.<br><br>"
+            "<b>12. Lower Percentile of Pixel Intensities for Segmentation Marker Channel:</b> Any intensity below this percentile is mapped to 0 (black). Contrast adjustments are for visualization only.<br><br>"
 
-            "<b>12. Upper Percentile of Pixel Intensities for Segmentation Marker Channel:</b> Any intensity above this percentile is mapped to 1 (white).<br><br>"
+            "<b>13. Upper Percentile of Pixel Intensities for Segmentation Marker Channel:</b> Any intensity above this percentile is mapped to 1 (white).<br><br>"
 
-            "<b>13. Average Cell Diameter:</b> The typical cell diameter in microns.<br><br>"
+            "<b>14. Average Cell Diameter:</b> The typical cell diameter in microns.<br><br>"
 
-            "<b>14. Flow Threshold:</b> Maximum allowed flow error per segmented mask. Increase if you're missing ROIs; decrease to reduce noise.<br><br>"
+            "<b>15. Flow Threshold:</b> Maximum allowed flow error per segmented mask. Increase if you're missing ROIs; decrease to reduce noise.<br><br>"
 
-            "<b>15. Minimum Cell Area:</b> Minimum area (in microns²) for a segmented object to be considered a valid cell.<br><br>"
+            "<b>16. Minimum Cell Area:</b> Minimum area (in microns²) for a segmented object to be considered a valid cell.<br><br>"
 
-            "<b>16. Minimum Percentage of Image Occupied by Cells:</b> Minimum proportion of the image that must be covered by cells. Increase this to ignore empty images.<br><br>"
+            "<b>17. Minimum Percentage of Image Occupied by Cells:</b> Minimum proportion of the image that must be covered by cells. Increase this to ignore empty images.<br><br>"
 
-            "<b>17. Segmentation Channel Intensity Threshold:</b> Minimum fluorescence intensity required for a pixel to be included in segmentation. Increase if empty images are segmented.<br><br>"
+            "<b>18. Segmentation Channel Intensity Threshold:</b> Minimum fluorescence intensity required for a pixel to be included in segmentation. Increase if empty images are segmented.<br><br>"
 
-            "<b>18. Pixel-to-Micron Ratio:</b> The conversion factor from pixels to microns (depends on your microscope setup).<br><br>"
+            "<b>19. Pixel-to-Micron Ratio:</b> The conversion factor from pixels to microns (depends on your microscope setup).<br><br>"
 
 
             "<b>• Toggle:</b> This is the default mode. It allows the user to remove incorrect masks from the analysis. Removed masks are stored temporarily in memory and can be toggled back while the application is still running.<br>"
