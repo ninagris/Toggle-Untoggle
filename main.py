@@ -1108,13 +1108,13 @@ class ImageProcessingApp(QMainWindow):
             nucleus_contrast_high = self.input_form.nucleus_high_contrast_slider.value()
 
             # Get numeric parameters
-            diam = int(self.input_form.diameter.text())
+            diam = float(self.input_form.diameter.text())
             flow_thresh = float(self.input_form.flow_threshold.text())
-            min_area = int(self.input_form.min_area.text())
+            min_area = float(self.input_form.min_area.text())
             min_non_black_pixels_percentage = float(self.input_form.min_non_black_pixels_percentage.text())
-            intensity_threshold = int(self.input_form.intensity_threshold.text())
+            intensity_threshold = float(self.input_form.intensity_threshold.text())
             min_nucleus_pixels_percentage = float(self.input_form.min_nucleus_pixels_percentage.text())
-            nucleus_pixel_threshold = int(self.input_form.nucleus_pixel_threshold.text())
+            nucleus_pixel_threshold = float(self.input_form.nucleus_pixel_threshold.text())
             pixel_conv_rate = None
             pixel_conv_rate_text = self.input_form.pixel_rate.text()
             # Loading images from folder
