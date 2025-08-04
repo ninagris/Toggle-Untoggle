@@ -56,8 +56,9 @@ doi: [https://doi.org/10.1101/2025.05.21.655178](https://doi.org/10.1101/2025.05
 ## GUI Input Parameters:
 
 1. **Images Folder Path:**
-The path to the folder containing the images. Only single-channel raw images should be included.
+The path to the folder containing the images. Include either single-channel or composite raw images.
 If multi-channel images with the same file IDs are present, you may see a “No images have been processed” message.
+
 Files without the .tif, .tiff, .TIF, or .TIFF extensions will be ignored.
 
    **⚠️ Important**:
@@ -116,6 +117,8 @@ If checked, additional input fields for specifying the nucleus channel input par
       **–Minimum Percentage of Cell Area Occupied by Nucleus:** The minimum proportion of the cell's area that must be occupied by nucleus (blue) pixels.
 
       **–Nucleus Channel Intensity Threshold:** Minimum fluorescence intensity for a pixel to be considered part of the nucleus.
+
+Don’t check this box when processing composite images unless you also have a separate nucleus channel provided with matching unique IDs. Composite images will be treated as containing only the segmentation channel, but using composite raw images as an input can substantially improve segmentation performance.
 
 11. **Segmentation Channel Color:**
 The color of the segmentation channel for display (choose from dropdown). The color is only used for the isualization purposes.
