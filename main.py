@@ -17,7 +17,7 @@ from PIL import Image
 from PyQt6.QtWidgets import QApplication, QLabel, QPushButton
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QMainWindow
 from PyQt6.QtWidgets import QTabWidget, QScrollArea, QSizePolicy, QStyleFactory, QCheckBox
-from PyQt6.QtGui import QPixmap, QImage, QFont, QIcon
+from PyQt6.QtGui import QPixmap, QImage, QFont, QIcon, QPalette, QColor
 from PyQt6.QtCore import Qt, pyqtSignal, QThread, QTimer,QSize
 
 from image_analysis_pipeline import open_folder, image_preprocessing, analyze_segmented_cells, convert_to_pixmap, normalize_to_uint8, pixel_conversion, compute_region_properties
@@ -44,7 +44,6 @@ class ImageProcessingApp(QMainWindow):
 
         # Controller for managing viewer mode states
         self.viewer_mode_controller = ViewerModeController()
-
         # Main tab layout
         self.tabs = QTabWidget()
         self.tabs.setTabPosition(QTabWidget.TabPosition.North)
@@ -1489,10 +1488,40 @@ class ImageProcessingWorker(QThread):
             self.status_update.emit("No images processed. Please check your input parameters.")
             self.finished_processing.emit() 
 
+def set_light_palette(app):
+    palette = QPalette()
+    palette.setColor(QPalette.ColorRole.Window, QColor(255, 255, 255))
+    palette.setColor(QPalette.ColorRole.WindowText, Qt.GlobalColor.black)
+    palette.setColor(QPalette.ColorRole.Base, QColor(240, 240, 240))
+    palette.setColor(QPalette.ColorRole.AlternateBase, QColor(255, 255, 255))
+    palette.setColor(QPalette.ColorRole.ToolTipBase, Qt.GlobalColor.black)
+    palette.setColor(QPalette.ColorRole.ToolTipText, Qt.GlobalColor.black)
+    palette.setColor(QPalette.ColorRole.Text, Qt.GlobalColor.black)
+    palette.setColor(QPalette.ColorRole.Button, QColor(240, 240, 240))
+    palette.setColor(QPalette.ColorRole.ButtonText, Qt.GlobalColor.black)
+    palette.setColor(QPalette.ColorRole.BrightText, Qt.GlobalColor.red)
+    palette.setColor(QPalette.ColorRole.Highlight, QColor(0, 120, 215))
+    palette.setColor(QPalette.ColorRole.HighlightedText, Qt.GlobalColor.white)
+    app.setPalette(palette)
+    
  # === Main execution for the app ===
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setStyle(QStyleFactory.create("Fusion"))
+    # Optional: your global stylesheet
+    set_light_palette(app)
+    app.setStyleSheet("""
+        QWidget {
+            background-color: white;
+            color: black;
+        }
+        QPushButton {
+            background-color: #e0e0e0;
+            border: 1px solid #a0a0a0;
+        }
+    """)
     main_window = ImageProcessingApp()
     main_window.show()
     sys.exit(app.exec())
+
+
