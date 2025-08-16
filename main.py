@@ -30,9 +30,12 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 def resource_path_2(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
     if hasattr(sys, "_MEIPASS"):
-        return os.path.join(sys._MEIPASS, relative_path)
-    return os.path.join(os.path.abspath("."), relative_path)
+        base_path = sys._MEIPASS
+    else:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 class ImageProcessingApp(QMainWindow):
     def __init__(self):
@@ -43,7 +46,7 @@ class ImageProcessingApp(QMainWindow):
         # Window setup
         self.setWindowTitle("Toggle-Untoggle")
         self.setWindowFlags(Qt.WindowType.Window)
-        self.setWindowIcon(QIcon(resource_path_2("icons/icon.png")))
+        self.setWindowIcon(QIcon(resource_path_2("icons/icon.ico")))
         self.resize(850, 700)
         self.setMinimumSize(850, 700)
         #self.showFullScreen()
@@ -1513,6 +1516,7 @@ def set_light_palette(app):
  # === Main execution for the app ===
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon(resource_path_2("icons/icon.ico")))
     app.setStyle(QStyleFactory.create("Fusion"))
     # Optional: your global stylesheet
     set_light_palette(app)
