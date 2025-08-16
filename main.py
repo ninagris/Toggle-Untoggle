@@ -29,6 +29,11 @@ def resource_path(relative_path):
     base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base_path, relative_path)
 
+def resource_path_2(relative_path):
+    if hasattr(sys, "_MEIPASS"):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.abspath("."), relative_path)
+
 class ImageProcessingApp(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -37,10 +42,11 @@ class ImageProcessingApp(QMainWindow):
 
         # Window setup
         self.setWindowTitle("Toggle-Untoggle")
-        self.setWindowIcon(QIcon("icon.png"))
+        self.setWindowFlags(Qt.WindowType.Window)
+        self.setWindowIcon(QIcon(resource_path_2("icons/icon.png")))
         self.resize(850, 700)
         self.setMinimumSize(850, 700)
-        self.showFullScreen()
+        #self.showFullScreen()
 
         # Controller for managing viewer mode states
         self.viewer_mode_controller = ViewerModeController()
