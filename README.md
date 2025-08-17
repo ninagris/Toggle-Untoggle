@@ -19,11 +19,11 @@ doi: [https://doi.org/10.1101/2025.05.21.655178](https://doi.org/10.1101/2025.05
 
 **Note:** The packaged GUI application can currently be run without external hardware only on macOS (M1–M3), as it relies on embedded GPU resources available on these devices. Running Toggle-Untoggle on Windows or Linux requires external GPU support. 
 
-1. Go to the releases page and download the latest version of the software for your OS.
+1. Go to the releases page and download the latest version of the software for your OS (MacOS or Windows).
 2. Unzip the downloaded file.
 3. On mac, if your computer prevents the app from opening due to security settings, go to System Settings → Privacy & Security, then allow the app to open under “Apps from unidentified developers”. 
 
-**Windows/Linux users:** If the GUI application does not open on your system, consider running Toggle-Untoggle in an anaconda virtual environment instead. Instructions for setting up the environment and installing dependencies are provided in the next section. 
+**Linux users:** running Toggle-Untoggle in currently only possible using an anaconda virtual environment. Instructions for setting up the environment and installing dependencies are provided in the next section. 
 
 ## Setting Up an Anaconda Environment
 
@@ -199,7 +199,7 @@ The conversion factor from pixels to microns (depends on your microscope setup).
 - **Subjectivity:** Manual corrections may introduce user bias.  
 - **Low throughput:** Not well-suited for large-scale screening.  
 - **Hardware-dependent:** Performance is limited when using only a CPU.  
-- **Potentially Limited cross-platform testing:** Mainly validated on macOS; Windows and Linux have been tested to a lesser extent.
+- **Potentially Limited cross-platform testing:** Mainly validated on macOS and Windows; Linux has been tested to a lesser extent.
 
 ## Optional Post-Processing Manipulations:
 
