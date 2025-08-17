@@ -1,4 +1,4 @@
-name: toggle-untoggle
+name: toggler
 channels:
   - conda-forge
   - defaults
