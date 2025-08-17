@@ -13,16 +13,24 @@ import platform
 from skimage import measure
 from cellpose import models
 from PIL import Image
+from tqdm import tqdm
 
 from PyQt6.QtWidgets import QApplication, QLabel, QPushButton
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QMainWindow
 from PyQt6.QtWidgets import QTabWidget, QScrollArea, QSizePolicy, QStyleFactory, QCheckBox
 from PyQt6.QtGui import QPixmap, QImage, QFont, QIcon, QPalette, QColor
-from PyQt6.QtCore import Qt, pyqtSignal, QThread, QTimer,QSize
+from PyQt6.QtCore import Qt, pyqtSignal, QThread, QTimer,QSize, qInstallMessageHandler
 
 from image_analysis_pipeline import open_folder, image_preprocessing, analyze_segmented_cells, convert_to_pixmap, normalize_to_uint8, pixel_conversion, compute_region_properties
 from toggle import ImageViewer, ViewerModeController
 from input_form_components import InputFormWidget, DraggableTextEdit
+
+def handler(mode, context, message):
+    if "Could not parse stylesheet" in message or "QLayout::addChildLayout" in message:
+        return  # suppress
+    #print(message)  # still show other messages
+
+qInstallMessageHandler(handler)
 
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller bundle """
@@ -182,7 +190,7 @@ class ImageProcessingApp(QMainWindow):
 
         except Exception as e:
             self.model = None
-            print(f"[MODEL] Model loading failed: {e}")
+            #print(f"[MODEL] Model loading failed: {e}")
             raise
 
 
@@ -726,8 +734,8 @@ class ImageProcessingApp(QMainWindow):
                 with zipfile.ZipFile(zip_path, 'w') as zipf:
                     for filename, roi in roi_list:
                         zipf.writestr(filename, roi.tobytes())
-            else:
-                print(f"No ROIs generated for {image_name}")
+            #else:
+                #print(f"No ROIs generated for {image_name}")
 
     def save_rois_to_zip(self, correct_df):
         """
@@ -1481,7 +1489,7 @@ class ImageProcessingWorker(QThread):
                             self.count += 1
 
                     except Exception as e:
-                        print(e)
+                        #print(e)
                         continue  # Moving to the next image
              # === Update progress ===
             self.progress_updated.emit(int(((num + 1) / num_images) * 100))
@@ -1515,6 +1523,16 @@ def set_light_palette(app):
     
  # === Main execution for the app ===
 if __name__ == "__main__":
+    
+    if not sys.stdout:
+        sys.stdout = open(os.devnull, "w")
+    if not sys.stderr:
+        sys.stderr = open(os.devnull, "w")
+    
+    #disable_tqdm = not sys.stdout or not sys.stdout.isatty()
+    #for x in tqdm(range(100), disable=disable_tqdm):
+    #    pass
+    
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon(resource_path_2("icons/icon.ico")))
     app.setStyle(QStyleFactory.create("Fusion"))
@@ -1533,5 +1551,4 @@ if __name__ == "__main__":
     main_window = ImageProcessingApp()
     main_window.show()
     sys.exit(app.exec())
-
 
