@@ -1,23 +1,14 @@
-name: toggle-untoggle
+name: toggler
 channels:
-  - david_baddeley
-  - anaconda
   - conda-forge
   - defaults
 dependencies:
-  - bzip2
-  - ca-certificates
-  - libffi
-  - ncurses
-  - openssl
-  - pip
   - python=3.10.16
-  - readline
+  - pip
   - setuptools
-  - sqlite
-  - tk
   - wheel
-  - xz
+  - ca-certificates
+  - openssl
   - zlib
   - pip:
       - altgraph
@@ -64,4 +55,3 @@ dependencies:
       - tqdm
       - typing-extensions
       - tzdata
-prefix: /opt/anaconda3/envs/toggle-untoggle

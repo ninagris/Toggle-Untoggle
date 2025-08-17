@@ -18,15 +18,30 @@ from PyQt6.QtWidgets import QApplication, QLabel, QPushButton
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QMainWindow
 from PyQt6.QtWidgets import QTabWidget, QScrollArea, QSizePolicy, QStyleFactory, QCheckBox
 from PyQt6.QtGui import QPixmap, QImage, QFont, QIcon, QPalette, QColor
-from PyQt6.QtCore import Qt, pyqtSignal, QThread, QTimer,QSize
+from PyQt6.QtCore import Qt, pyqtSignal, QThread, QTimer,QSize, qInstallMessageHandler
 
 from image_analysis_pipeline import open_folder, image_preprocessing, analyze_segmented_cells, convert_to_pixmap, normalize_to_uint8, pixel_conversion, compute_region_properties
 from toggle import ImageViewer, ViewerModeController
 from input_form_components import InputFormWidget, DraggableTextEdit
 
+def handler(mode, context, message):
+    if "Could not parse stylesheet" in message or "QLayout::addChildLayout" in message:
+        return  # suppress
+    print(message)  # still show other messages
+
+qInstallMessageHandler(handler)
+
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller bundle """
     base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base_path, relative_path)
+
+def resource_path_2(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    if hasattr(sys, "_MEIPASS"):
+        base_path = sys._MEIPASS
+    else:
+        base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
 class ImageProcessingApp(QMainWindow):
@@ -37,10 +52,11 @@ class ImageProcessingApp(QMainWindow):
 
         # Window setup
         self.setWindowTitle("Toggle-Untoggle")
-        self.setWindowIcon(QIcon("icon.png"))
+        self.setWindowFlags(Qt.WindowType.Window)
+        self.setWindowIcon(QIcon(resource_path_2("icons/icon.ico")))
         self.resize(850, 700)
         self.setMinimumSize(850, 700)
-        self.showFullScreen()
+        #self.showFullScreen()
 
         # Controller for managing viewer mode states
         self.viewer_mode_controller = ViewerModeController()
@@ -1507,6 +1523,7 @@ def set_light_palette(app):
  # === Main execution for the app ===
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon(resource_path_2("icons/icon.ico")))
     app.setStyle(QStyleFactory.create("Fusion"))
     # Optional: your global stylesheet
     set_light_palette(app)

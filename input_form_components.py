@@ -24,7 +24,7 @@ class ModelSelectorWidget(QWidget):
         self.setMaximumHeight(40)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.model_dropdown = QComboBox()
-        self.model_dropdown.addItems(["cyto3", "nuclei","livecell_cp3", "custom model"])
+        self.model_dropdown.addItems(["cyto3", "nuclei", "custom model"])
         self.model_dropdown.setCurrentText("cyto3")
         self.model_dropdown.setFont(font)
         self.model_dropdown.setMinimumHeight(25)
