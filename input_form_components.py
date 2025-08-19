@@ -534,7 +534,7 @@ class InputFormWidget(QWidget):
         self.form_layout.addRow(self.nucleus_group_widget)  # 👈 Add the whole block as a form row
 
         # Add remaining fields
-        self.add_row("Segmentation Channel Color:", self.main_marker_channel_dropdown)
+        self.add_row("Segmentation Channel Colour:", self.main_marker_channel_dropdown)
         self.add_row("Lower Percentile of Pixel Intensities for Segmentation Marker Channel:", self.main_marker_low_contrast_widget)
         self.add_row("Upper Percentile of Pixel Intensities for Segmentation Marker Channel:", self.main_marker_high_contrast_widget)
         self.add_row("Average Cell Diameter (µm):", self.diameter)

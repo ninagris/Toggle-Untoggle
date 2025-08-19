@@ -120,8 +120,8 @@ If checked, additional input fields for specifying the nucleus channel input par
 
 Don’t check this box when processing composite images unless you also have a separate nucleus channel provided with matching unique IDs. Composite images will be treated as containing only the segmentation channel, but using composite raw images as an input can substantially improve segmentation performance.
 
-11. **Segmentation Channel Color:**
-The color of the segmentation channel for display (choose from dropdown). The color is only used for the isualization purposes.
+11. **Segmentation Channel Colour:**
+The colour of the segmentation channel for display (choose from dropdown). The colour is only used for the isualization purposes.
 12. **Lower Percentile of Pixel Intensities for Segmentation Marker Channel:**
 Any intensity below this percentile is mapped to 0 (black). Contrast adjustments are for visualization only; fluorescence intensity is extracted from the original images that you input.
 13. **Upper Percentile of Pixel Intensities for Segmentation Marker Channel:**
@@ -141,7 +141,7 @@ The conversion factor from pixels to microns (depends on your microscope setup).
 
 **Toggle Mode:** Go through your images and click on the cells you want to exclude from the analysis. Clicking again will re-include the cells, even if you’ve already pressed the save button. Untoggled cells appear dimmer than active ones included in the analysis.
 
-**Connect Mode:** Go through your images and draw a line with your mouse across two or more cells you want to merge. Once the masks share the same color, the cells are considered connected. To disconnect them, draw a line between the same cells again.
+**Connect Mode:** Go through your images and draw a line with your mouse across two or more cells you want to merge. Once the masks share the same colour, the cells are considered connected. To disconnect them, draw a line between the same cells again.
 
 **Draw Mode and Erase Mode:** Go through your images and use the pen tool to draw missing cells or the eraser tool to remove cells you've just drawn. Make sure to draw closed shapes to ensure accurate measurements.
 
@@ -191,7 +191,7 @@ The conversion factor from pixels to microns (depends on your microscope setup).
 | Many incorrectly detected cells                                                                | Decrease the `flow_threshold` and/or adjust the average cell diameter.                                        |
 | Freezing after processing a certain percentage of images on macOS native GPU                  | Split images into separate folders and process in smaller batches, or use additional GPU resources.           |
 | Drawn ROI measurements appear unrealistically large or small                                   | Ensure ROIs are drawn as enclosed objects as accurately as possible.                                          |
-| Display color images are too dim or over-saturated                                             | Adjust the maximum and/or minimum percentile for the corresponding channel using the sliders.                |
+| Display colour images are too dim or over-saturated                                             | Adjust the maximum and/or minimum percentile for the corresponding channel using the sliders.                |
 
 
 ## Toggle-Untoggle Limitations ⚠️🛠:
