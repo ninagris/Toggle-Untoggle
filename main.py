@@ -28,7 +28,6 @@ from input_form_components import InputFormWidget, DraggableTextEdit
 def handler(mode, context, message):
     if "Could not parse stylesheet" in message or "QLayout::addChildLayout" in message:
         return  # suppress
-    #print(message)  # still show other messages
 
 qInstallMessageHandler(handler)
 
