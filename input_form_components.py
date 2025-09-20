@@ -67,9 +67,33 @@ class ModelSelectorWidget(QWidget):
         self.custom_model_input = QLineEdit()
         self.custom_model_input.setPlaceholderText("Path to the custom cellpose model")
         self.custom_model_input.setFont(font)
+        self.custom_model_input.setStyleSheet("""
+            QLineEdit {
+                border: 1px solid #808080;
+                border-radius: 3px;
+                padding: 3px;
+                background-color: white;   /* match the dropdown */
+            }
+            QLineEdit:focus {
+                border: 1px solid #4A90E2;  /* highlight color when active */
+            }
+        """)
         self.browse_button = QPushButton("Browse")
         self.browse_button.setFont(font)
-        self.browse_button.setMaximumSize(70, 40)
+        self.browse_button.setFixedSize(70, 25)
+        self.browse_button.setStyleSheet("""
+            QPushButton {
+                background-color: #f0f0f0;   /* light gray background */
+                border: 1px solid gray;
+                border-radius: 3px;
+            }
+            QPushButton:hover {
+                background-color: #d9d9d9;   /* slightly darker on hover */
+            }
+            QPushButton:pressed {
+                background-color: #bfbfbf;   /* darker when clicked */
+            }
+        """)
         # Connect dropdown change to handler function
         self.browse_button.clicked.connect(self.browse_custom_model)
 
@@ -365,7 +389,44 @@ class InputFormWidget(QWidget):
         self.model_selector_widget = ModelSelectorWidget(self.font_input)
 
         # Input Fields
+        # Folder path input section styling
         self.images_folder_path = QLineEdit("")
+        self.images_folder_path.setFont(self.font_input)
+        self.images_folder_path.setMinimumHeight(30)   # match button height
+        self.images_folder_path.setMaximumHeight(40)
+        self.images_folder_path.setStyleSheet("""
+            QLineEdit {
+                border: 1px solid gray;
+                border-radius: 3px;
+                padding: 3px;   /* slightly more padding so text isn’t cramped */
+            }
+        """)
+        # Folder path browse button styling
+        self.folder_browse_button = QPushButton("Browse")
+        self.folder_browse_button.setFont(self.font_input)
+        self.folder_browse_button.setFixedSize(70, 25)
+        self.folder_browse_button.setStyleSheet("""
+            QPushButton {
+                background-color: #f0f0f0;   /* light gray background */
+                border: 1px solid gray;
+                border-radius: 3px;
+            }
+            QPushButton:hover {
+                background-color: #d9d9d9;   /* slightly darker on hover */
+            }
+            QPushButton:pressed {
+                background-color: #bfbfbf;   /* darker when clicked */
+            }
+        """)
+        self.folder_browse_button.clicked.connect(self.browse_custom_path)
+        self.folder_input_container = QWidget()
+        folder_input_layout = QHBoxLayout(self.folder_input_container)
+        folder_input_layout.setContentsMargins(0, 0, 0, 0)
+        folder_input_layout.setSpacing(5)
+        folder_input_layout.addWidget(self.images_folder_path, stretch=1)
+        folder_input_layout.addWidget(self.folder_browse_button)
+
+        # the rest of the input sections
         self.csv_file_name = QLineEdit("single_cell_morphology")
         self.roi_folder_name = QLineEdit("ROIs")
         self.condition_name = QLineEdit("")
@@ -397,7 +458,7 @@ class InputFormWidget(QWidget):
             input_field.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
             input_field.setStyleSheet("""
             QLineEdit {
-                border: 1px solid gray;  /* Lighter gray border */
+                border: 1px solid gray; 
                 border-radius: 3px;
                 padding: 1px;
             }
@@ -463,7 +524,7 @@ class InputFormWidget(QWidget):
         self.GPU_checkbox.setChecked(gpu_available)
 
         # Add first 6 rows in order
-        self.add_row("Images Folder Path:", self.images_folder_path)
+        self.add_row("Images Folder Path:", self.folder_input_container)
         self.add_row("Output File Name:", self.csv_file_name)
         self.add_row("ROI Folder Name:", self.roi_folder_name)
         self.add_row("Cellpose Model:", self.model_selector_widget)
@@ -477,15 +538,19 @@ class InputFormWidget(QWidget):
         checkbox_cell_labels.setFont(self.font_label)
         self.cell_labels_checkbox = QCheckBox()
         self.cell_labels_checkbox.setStyleSheet("QCheckBox::indicator { width: 25px; height: 25px; }")
+        
         self.cell_label_font_size_spinbox = QSpinBox()
         self.cell_label_font_size_spinbox.setRange(5, 30)
+    
         self.cell_label_font_size_spinbox.setValue(18)  # default value
         self.cell_label_font_size_spinbox.setSuffix(" pt")
         self.cell_label_font_size_spinbox.setVisible(False)  # hidden by default
         font_spinbox = QFont("Arial", 18)
+
         self.cell_label_font_size_spinbox.setFont(font_spinbox)
         self.cell_label_font_size_spinbox.setMinimumHeight(25) 
-        self.cell_label_font_size_spinbox.setMaximumHeight(40)   # Adjust height as needed
+        self.cell_label_font_size_spinbox.setMaximumHeight(30)   
+        
 
         # Horizontal layout to place checkbox + font size spinbox in one row
         cell_label_layout = QHBoxLayout()
@@ -506,7 +571,7 @@ class InputFormWidget(QWidget):
         checkbox_label = QLabel(f"{self.input_row_count}. Nucleus channel present")
         checkbox_label.setFont(self.font_label)
         self.nucleus_checkbox = QCheckBox()
-        self.nucleus_checkbox.setStyleSheet("QCheckBox::indicator { width: 25px; height: 25px; }")
+        self.nucleus_checkbox.setStyleSheet("QCheckBox::indicator { width: 25px; height: 25px;}")
         nucleus_checkbox_layout = QHBoxLayout()
         nucleus_checkbox_layout.addWidget(self.nucleus_checkbox)
         nucleus_checkbox_layout.setContentsMargins(0, 0, 0, 0)
@@ -520,7 +585,6 @@ class InputFormWidget(QWidget):
         self.nucleus_layout.setSpacing(10)
         self.nucleus_layout.setContentsMargins(0, 0, 0, 0)
         self.nucleus_layout.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-
     
         # Add all nucleus rows
         self.add_nucleus_row("  • Nucleus Channel File ID:", self.unique_nucleus_identifier)
@@ -613,6 +677,16 @@ class InputFormWidget(QWidget):
         main_layout.addWidget(scroll_field)
         self.process_button.clicked.connect(lambda: self.processClicked.emit(button_layout))
     
+
+    def browse_custom_path(self):
+        """
+        Opens a file dialog to let the user select a folder with images.
+        Once a file is selected, updates the input field with the path 
+        """
+        folder = QFileDialog.getExistingDirectory(self, "Select Folder")
+        if folder:
+            self.images_folder_path.setText(folder)
+            
 
     def add_row(self, label_text, input_widget):
         """

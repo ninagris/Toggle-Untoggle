@@ -287,7 +287,12 @@ class ImageProcessingApp(QMainWindow):
 
             if current_model_text == "custom model":
                 model_type = ""
-                custom_path = self.model_selector_widget.custom_model_input.text().strip()
+                custom_path = self.input_form.model_selector_widget.custom_model_input.text().strip()
+                if not custom_path: # checking if the input is completely empty
+                    self.update_status_label("Please input a path to the custom model!")
+                    self.processing_in_progress = False
+                    self.input_form.process_button.setEnabled(True)
+                    return
             else:
                 model_type = current_model_text
                 custom_path = ""
@@ -325,7 +330,6 @@ class ImageProcessingApp(QMainWindow):
             )
             self.worker.finished.connect(lambda: self.stop_button.deleteLater() if hasattr(self, "stop_button") and self.stop_button else None)
     
-
     def create_images_tab(self):
         """
         Create a new tab for images
