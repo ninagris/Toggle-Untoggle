@@ -82,10 +82,13 @@ Files without the .tif, .tiff, .TIF, or .TIFF extensions will be ignored.
 2. **Output File Name:**
 The desired name for the output .csv file. This is not a file path, just the name without the .csv extension.
 The file will be saved in the Images Folder. The output fle name can be changed to allow for multiple savings.
+**⚠️ Tip to avoid overwriting**: If a file with the same name already exists in the Images Folder, it will be overwritten. Use a unique name (e.g., include date or experiment number) to preserve previous results.
 
 3. **ROI Folder Name:**
 The desired name for the folder that will contain the ROIs of the selected cells. This is not a folder path, just the name.
 The folder will be created inside the Images Folder. The ROI folder name can be changed to allow for multiple savings.
+**⚠️ Tip to avoid overwriting**: If a folder with the same name already exists in the Images Folder, it will be overwritten. 
+Use a unique name (e.g., include date or experiment number) to preserve previous results.
 
 4. **Cellpose Model:**
 Select one of the available options or enter the path to your custom pre-trained model saved locally. Refer to [Cellpose guidelines](https://rdcu.be/eypEB) on how to train your own model.

@@ -727,9 +727,11 @@ class InputFormWidget(QWidget):
             "<b>1. Images Folder Path:</b> The path to the folder containing the images. Only single-channel images should be included. "
             "If multi-channel images with the same file IDs are present, you may see a “No images have been processed” message. Files without the .tif, .tiff, .TIF, or .TIFF extensions will be ignored if present in the same folder.<br><br>"
 
-            "<b>2. Output File Name:</b> The desired name for the output .csv file. This is not a file path, just the name without the .csv extension. The file will be saved in the Images Folder.<br><br>"
+            "<b>2. Output File Name:</b> The desired name for the output .csv file. This is not a file path, just the name without the .csv extension. The file will be saved in the Images Folder.<br>"
+            "⚠️ <b>Tip to avoid overwriting:</b> If a file with the same name already exists in the Images Folder, it will be overwritten. Use a unique name (e.g., include date or experiment number) to preserve previous results.<br><br>"
 
-            "<b>3. ROI Folder Name:</b> The desired name for the folder that will contain the ROIs of the selected cells. This is not a folder path, just the name. The folder will be created inside the Images Folder.<br><br>"
+            "<b>3. ROI Folder Name:</b> The desired name for the folder that will contain the ROIs of the selected cells. This is not a folder path, just the name. The folder will be created inside the Images Folder.<br>"
+            "⚠️ <b>Tip to avoid overwriting:</b> If a folder with the same name already exists in the Images Folder, it will be overwritten. Use a unique name (e.g., include date or experiment number) to preserve previous results.<br><br>"
 
             "<b>4. Cellpose Model:</b> Select one of the available options or enter the path to your custom pre-trained model saved locally.<br><br>"
 
