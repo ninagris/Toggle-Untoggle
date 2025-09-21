@@ -13,9 +13,8 @@ import platform
 from skimage import measure
 from cellpose import models
 from PIL import Image
-from tqdm import tqdm
 
-from PyQt6.QtWidgets import QApplication, QLabel, QPushButton
+from PyQt6.QtWidgets import QApplication, QLabel, QPushButton, QTextEdit, QLineEdit
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QMainWindow
 from PyQt6.QtWidgets import QTabWidget, QScrollArea, QSizePolicy, QStyleFactory, QCheckBox
 from PyQt6.QtGui import QPixmap, QImage, QFont, QIcon, QPalette, QColor
@@ -49,7 +48,6 @@ class ImageProcessingApp(QMainWindow):
         super().__init__()
         # Load default Cellpose model (cyto3) with GPU enabled
         self.model = models.CellposeModel(gpu=True, model_type='cyto3')
-
         # Window setup
         self.setWindowTitle("Toggle-Untoggle")
         self.setWindowFlags(Qt.WindowType.Window)
@@ -81,13 +79,13 @@ class ImageProcessingApp(QMainWindow):
                 background-color: lightblue;  /* Highlight selected tab */
             }
         """)
-
         # GitHub link in top-right corner
         self.github_link = QLabel()
         self.github_link.setText(
             '<a href="https://github.com/ninagris/Toggle-Untoggle" style="font-size:18px;">'
             'Our GitHub</a>'
         )
+        self.github_link.setProperty("no_copy", True)
         self.github_link.setTextFormat(Qt.TextFormat.RichText)
         self.github_link.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
         self.github_link.setOpenExternalLinks(True)
@@ -101,7 +99,6 @@ class ImageProcessingApp(QMainWindow):
         font = QFont("Arial", 18) 
         self.help_text.setFont(font)
         self.help_text.setReadOnly(True)
-
         # Input tab and form
         self.input_tab = QWidget() 
         self.input_tab.setLayout(QVBoxLayout())
@@ -116,7 +113,25 @@ class ImageProcessingApp(QMainWindow):
         self.input_form.saveClicked.connect(self.collect_all_callbacks)
         self.images_tab = None   # Image display tab
         self.image_layout = None  # Layout for processed image widgets
+        self.make_stuff_copyable(self)
     
+    def make_stuff_copyable(self, widget):
+        for child in widget.findChildren(QWidget):
+            if child.property("no_copy"):
+                continue  # skip the widget with the GitHub link to leave it clickable
+            if isinstance(child, QLabel):
+                child.setTextInteractionFlags(
+                    Qt.TextInteractionFlag.TextSelectableByMouse
+                )
+            elif isinstance(child, QTextEdit):
+                child.setReadOnly(True)
+                child.setCursorWidth(0)  # hide cursor
+                child.setTextInteractionFlags(
+                    Qt.TextInteractionFlag.TextSelectableByMouse
+                )
+            elif isinstance(child, QLineEdit):
+                pass  # leave input fields editable
+            self.make_stuff_copyable(child)
 
     def update_modes(self):
         """
@@ -148,7 +163,6 @@ class ImageProcessingApp(QMainWindow):
             self.correction_checkbox.setChecked(False)
             self.drawing_checkbox.setChecked(False)
             mode = 'erase'
-
         self.viewer_mode_controller.set_mode(mode)  
 
     def is_gpu_available(self):
@@ -1251,7 +1265,12 @@ class ImageProcessingApp(QMainWindow):
         combined_container = QWidget()
         combined_layout = QVBoxLayout()
         combined_layout.setSpacing(10)  
-        combined_layout.addWidget(QLabel(f"<b><span style='font-size: 22px;'>{title}</span></b>"))
+        # Making the title copyable
+        title_label = QLabel(f"<b><span style='font-size: 22px;'>{title}</span></b>")
+        title_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        combined_layout.addWidget(title_label)
         combined_layout.addWidget(container)
         combined_container.setLayout(combined_layout)
         

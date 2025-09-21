@@ -537,21 +537,21 @@ class InputFormWidget(QWidget):
         checkbox_cell_labels = QLabel(f"{self.input_row_count}. Display cell labels")
         checkbox_cell_labels.setFont(self.font_label)
         self.cell_labels_checkbox = QCheckBox()
-        self.cell_labels_checkbox.setStyleSheet("QCheckBox::indicator { width: 25px; height: 25px; }")
         
+
+        self.cell_labels_checkbox.setStyleSheet("QCheckBox::indicator { width: 25px; height: 25px; }")
         self.cell_label_font_size_spinbox = QSpinBox()
+
         self.cell_label_font_size_spinbox.setRange(5, 30)
-    
         self.cell_label_font_size_spinbox.setValue(18)  # default value
         self.cell_label_font_size_spinbox.setSuffix(" pt")
         self.cell_label_font_size_spinbox.setVisible(False)  # hidden by default
+      
         font_spinbox = QFont("Arial", 18)
-
         self.cell_label_font_size_spinbox.setFont(font_spinbox)
         self.cell_label_font_size_spinbox.setMinimumHeight(25) 
         self.cell_label_font_size_spinbox.setMaximumHeight(30)   
         
-
         # Horizontal layout to place checkbox + font size spinbox in one row
         cell_label_layout = QHBoxLayout()
         cell_label_layout.addWidget(self.cell_labels_checkbox)
