@@ -1,3 +1,4 @@
+
 import sys
 import numpy as np
 import pandas as pd
@@ -1550,11 +1551,7 @@ if __name__ == "__main__":
         sys.stdout = open(os.devnull, "w")
     if not sys.stderr:
         sys.stderr = open(os.devnull, "w")
-    
-    #disable_tqdm = not sys.stdout or not sys.stdout.isatty()
-    #for x in tqdm(range(100), disable=disable_tqdm):
-    #    pass
-    
+
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon(resource_path_2("icons/icon.ico")))
     app.setStyle(QStyleFactory.create("Fusion"))
@@ -1573,4 +1570,3 @@ if __name__ == "__main__":
     main_window = ImageProcessingApp()
     main_window.show()
     sys.exit(app.exec())
-

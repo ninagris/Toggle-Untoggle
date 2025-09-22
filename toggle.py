@@ -1,3 +1,4 @@
+
 import numpy as np
 
 from PyQt6.QtCore import Qt
@@ -759,13 +760,6 @@ class ImageViewer(QGraphicsView):
                 label_item.setPos(scaled_x - rect.width() / 2, scaled_y - rect.height() / 2)
                 self.graphics_scene.addItem(label_item)
 
-    def resizeEvent(self, event):
-        """
-        Override resize behavior to maintain aspect ratio
-        """
-        self.fitInView(self.pixmap_item, Qt.AspectRatioMode.KeepAspectRatio)  
-        event.accept()
-
     def generate_colors(self, num_colors):
         """
         Generate distinct colors using HSV space
@@ -797,4 +791,3 @@ class ImageViewer(QGraphicsView):
         Update or add entry for the mask clicked
         """
         self.callback_dict[f"{name}_{label}"] = {'name': name, 'label': label, 'is_active': is_active}  
-
