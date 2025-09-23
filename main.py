@@ -1297,21 +1297,35 @@ class ImageProcessingApp(QMainWindow):
 
 
 class ZoomableImageView(QGraphicsView):
+    """
+    A custom QGraphicsView that displays an image (QPixmap) 
+    with support for zooming and panning.
+
+    - Mouse wheel zooms in/out (only with a real mouse wheel, not touchpad scroll).
+    - Trackpad pinch gesture zooms in/out smoothly.
+    - Image can be panned (dragged) when zoomed in.
+    - Zooming is clamped between a minimum and maximum level.
+    """
     def __init__(self, pixmap, parent=None):
+        """
+        Initialize the zoomable image view.
+        """
         super().__init__(parent)
 
+        # Create a scene to hold the image
         self.setScene(QGraphicsScene(self))
         self.pixmap_item = QGraphicsPixmapItem(pixmap)
         self.scene().addItem(self.pixmap_item)
         
-
-        # Rendering & interaction
+        # Rendering settings
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        # Zoom is anchored under the mouse cursor
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        # Enable drag-to-pan
         self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
 
-        # Hide scrollbars but allow panning
+        # Hide scrollbars (panning is done by dragging)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
@@ -1323,11 +1337,13 @@ class ZoomableImageView(QGraphicsView):
         # Enable pinch gestures
         self.grabGesture(Qt.GestureType.PinchGesture)
 
-    # Mouse wheel zoom
     def wheelEvent(self, event):
-        # Only zoom with mouse wheel (angleDelta), ignore touchpad scrolling
+        """
+        Handle mouse wheel events for zooming.
+        Ignores two-finger scrolling on a trackpad.
+        """
         if not event.pixelDelta().isNull():
-            # This is likely a touchpad scroll
+            # pixelDelta() indicates a touchpad gesture
             event.ignore()
             return
 
@@ -1336,20 +1352,26 @@ class ZoomableImageView(QGraphicsView):
         factor = zoom_in_factor if event.angleDelta().y() > 0 else zoom_out_factor
         self.apply_zoom(factor)
 
-    # Event handler for gestures
     def event(self, event):
+        """
+        Handle gesture events (specifically pinch gestures from trackpads).
+        """
         if event.type() == QEvent.Type.Gesture:
             pinch = event.gesture(Qt.GestureType.PinchGesture)
             if pinch is not None:
-                # Only use the *change factor*, not total scale
                 factor = pinch.scaleFactor()
                 self.apply_zoom(factor)
-                return True  # mark gesture as handled
+                return True 
         return super().event(event)
 
     def apply_zoom(self, factor):
-        # Compute new zoom level and clamp
+        """
+        Apply zoom scaling to the view while clamping to min/max limits.
+
+        """
+        # Compute new zoom level
         new_zoom = self.current_zoom * factor
+        # Clamp between min and max zoom levels
         if new_zoom < self.min_zoom:
             factor = self.min_zoom / self.current_zoom
             self.current_zoom = self.min_zoom
@@ -1358,7 +1380,7 @@ class ZoomableImageView(QGraphicsView):
             self.current_zoom = self.max_zoom
         else:
             self.current_zoom = new_zoom
-        # Apply scaling
+        # Apply the scaling transform
         self.scale(factor, factor)
 
 
