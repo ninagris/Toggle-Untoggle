@@ -1380,7 +1380,7 @@ class ZoomableImageView(QGraphicsView):
             self.current_zoom = self.max_zoom
         else:
             self.current_zoom = new_zoom
-        # Apply the scaling transform
+            
         self.scale(factor, factor)
 
 
