@@ -1,4 +1,5 @@
 
+
 import sys
 import numpy as np
 import pandas as pd
@@ -17,9 +18,10 @@ from PIL import Image
 
 from PyQt6.QtWidgets import QApplication, QLabel, QPushButton, QTextEdit, QLineEdit
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QMainWindow
+from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem
 from PyQt6.QtWidgets import QTabWidget, QScrollArea, QSizePolicy, QStyleFactory, QCheckBox
-from PyQt6.QtGui import QPixmap, QImage, QFont, QIcon, QPalette, QColor
-from PyQt6.QtCore import Qt, pyqtSignal, QThread, QTimer,QSize, qInstallMessageHandler
+from PyQt6.QtGui import QPixmap, QImage, QFont, QIcon, QPalette, QColor, QPainter
+from PyQt6.QtCore import Qt, pyqtSignal, QThread, QTimer,QSize, qInstallMessageHandler, QEvent
 
 from image_analysis_pipeline import open_folder, image_preprocessing, analyze_segmented_cells, convert_to_pixmap, normalize_to_uint8, pixel_conversion, compute_region_properties
 from toggle import ImageViewer, ViewerModeController
@@ -1227,36 +1229,33 @@ class ImageProcessingApp(QMainWindow):
         container = QWidget()
         layout = QHBoxLayout()
 
-        # Image display widgets
-        label_gray = QLabel()
-        label_rgb = QLabel()
-        label_overlay = QLabel()
-        label_rgb.setScaledContents(True)
-        label_overlay.setScaledContents(True)
-        label_gray.setScaledContents(True)
-
+    
         # Resize and set scaled images
         scaled_width = 430 # Target width for each image
         scaled_height = 530  # Target height for each image
         scaled_pixmap_gray = pixmap_gray.scaled(scaled_width, scaled_height, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
         scaled_pixmap_rgb = pixmap_rgb.scaled(scaled_width, scaled_height, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
         scaled_pixmap_overlay = pixmap_overlay.scaled(scaled_width, scaled_height, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-        label_rgb.setPixmap(scaled_pixmap_rgb)
-        label_overlay.setPixmap(scaled_pixmap_overlay)
-        label_gray.setPixmap(scaled_pixmap_gray)
+
+        # Creating zoomable views for rgb and overlay
+        zoomable_rgb = ZoomableImageView(scaled_pixmap_rgb)
+        zoomable_overlay = ZoomableImageView(scaled_pixmap_overlay)
 
         # Setup image viewer for grayscale/masks interaction
         show_labels = self.input_form.cell_labels_checkbox.isChecked()
         font_size = self.input_form.cell_label_font_size_spinbox.value()
-        # Using the scaled gray image in ImageViewer
         if not hasattr(self, "viewer_mode_controller"):
             self.viewer_mode_controller = ViewerModeController()
         controller = self.viewer_mode_controller    
         self.gray_viewer = ImageViewer(scaled_pixmap_gray, masks_list, font_size, show_labels, title, mode_controller=controller)
+    
+        zoomable_rgb.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        zoomable_overlay.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.gray_viewer.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
-        # Add to layout
-        layout.addWidget(label_rgb)
-        layout.addWidget(label_overlay)
+        # Adding images to the layout
+        layout.addWidget(zoomable_rgb)
+        layout.addWidget(zoomable_overlay)
         layout.addWidget(self.gray_viewer)
         container.setLayout(layout)
 
@@ -1295,6 +1294,72 @@ class ImageProcessingApp(QMainWindow):
         if self.help_text.isVisible():
             self.help_text.setVisible(False)  # Close help window before closing main window
         event.accept()  # Proceed with closing the main window
+
+
+class ZoomableImageView(QGraphicsView):
+    def __init__(self, pixmap, parent=None):
+        super().__init__(parent)
+
+        self.setScene(QGraphicsScene(self))
+        self.pixmap_item = QGraphicsPixmapItem(pixmap)
+        self.scene().addItem(self.pixmap_item)
+        
+
+        # Rendering & interaction
+        self.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+
+        # Hide scrollbars but allow panning
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        # Zoom limits
+        self.current_zoom = 1.0
+        self.min_zoom = 1.0
+        self.max_zoom = 5.0
+
+        # Enable pinch gestures
+        self.grabGesture(Qt.GestureType.PinchGesture)
+
+    # Mouse wheel zoom
+    def wheelEvent(self, event):
+        # Only zoom with mouse wheel (angleDelta), ignore touchpad scrolling
+        if not event.pixelDelta().isNull():
+            # This is likely a touchpad scroll
+            event.ignore()
+            return
+
+        zoom_in_factor = 1.25
+        zoom_out_factor = 1 / zoom_in_factor
+        factor = zoom_in_factor if event.angleDelta().y() > 0 else zoom_out_factor
+        self.apply_zoom(factor)
+
+    # Event handler for gestures
+    def event(self, event):
+        if event.type() == QEvent.Type.Gesture:
+            pinch = event.gesture(Qt.GestureType.PinchGesture)
+            if pinch is not None:
+                # Only use the *change factor*, not total scale
+                factor = pinch.scaleFactor()
+                self.apply_zoom(factor)
+                return True  # mark gesture as handled
+        return super().event(event)
+
+    def apply_zoom(self, factor):
+        # Compute new zoom level and clamp
+        new_zoom = self.current_zoom * factor
+        if new_zoom < self.min_zoom:
+            factor = self.min_zoom / self.current_zoom
+            self.current_zoom = self.min_zoom
+        elif new_zoom > self.max_zoom:
+            factor = self.max_zoom / self.current_zoom
+            self.current_zoom = self.max_zoom
+        else:
+            self.current_zoom = new_zoom
+        # Apply scaling
+        self.scale(factor, factor)
 
 
 class ImageProcessingWorker(QThread):

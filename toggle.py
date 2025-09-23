@@ -1,7 +1,7 @@
 
 import numpy as np
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QEvent
 from PyQt6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsTextItem, QGraphicsPathItem
 from PyQt6.QtGui import QPixmap, QImage, QColor, QFont, QPen, QPainter, QPainterPath
 
@@ -221,7 +221,6 @@ class ImageViewer(QGraphicsView):
         self.graphics_scene = QGraphicsScene(self)
         self.setScene(self.graphics_scene)
         self.graphics_scene.addItem(self.drawing_item)
-        self.setFixedSize(pixmap.size())
         self.pixmap_item = QGraphicsPixmapItem(pixmap)
         self.graphics_scene.addItem(self.pixmap_item)
 
@@ -233,6 +232,65 @@ class ImageViewer(QGraphicsView):
         # Generate colors if not provided
         colors = self.generate_colors(num_masks)
         self.set_togglable_masks(masks, colors, pixmap, font_size=font_size, show_labels=show_labels)
+
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+        # Zoom limits
+        self.current_zoom = 1.0
+        self.min_zoom = 1.0
+        self.max_zoom = 5.0
+        # Enable pinch gestures for the trackpad
+        self.grabGesture(Qt.GestureType.PinchGesture)
+
+    def wheelEvent(self, event): 
+        """
+        Handle mouse wheel events for zooming.
+        - Ignores touchpad two-finger scrolling
+        - Zooms in/out when using a physical mouse wheel
+        """
+        if not event.pixelDelta().isNull():
+            # Ignore touchpad scrolling
+            event.ignore()
+            return
+        zoom_in_factor = 1.25
+        zoom_out_factor = 1 / zoom_in_factor
+        factor = zoom_in_factor if event.angleDelta().y() > 0 else zoom_out_factor # Determine zoom direction based on wheel rotation
+        self.apply_zoom(factor) # Apply the zoom
+
+    def event(self, event):
+        """
+        Handle general events, including gestures.
+        - Detects pinch gestures from a trackpad
+        - Calls apply_zoom() with the pinch scale factor
+        """
+        if event.type() == QEvent.Type.Gesture:
+            pinch = event.gesture(Qt.GestureType.PinchGesture)
+            if pinch:
+                # Only use the change in scale factor
+                self.apply_zoom(pinch.scaleFactor())
+                return True  # Mark gesture as handled
+
+        # Fall back to default event handling
+        return super().event(event)
+
+    def apply_zoom(self, factor):
+        """
+        Apply zoom to the QGraphicsView, clamped by min/max zoom limits.
+
+        """
+        # Calculate new zoom and clamp it
+        new_zoom = self.current_zoom * factor
+        if new_zoom < self.min_zoom:
+            factor = self.min_zoom / self.current_zoom
+            self.current_zoom = self.min_zoom
+        elif new_zoom > self.max_zoom:
+            factor = self.max_zoom / self.current_zoom
+            self.current_zoom = self.max_zoom
+        else:
+            self.current_zoom = new_zoom
+        # Apply the scaling transformation
+        self.scale(factor, factor)
     
     def set_view_properties(self):
         """Configures the view to remove scrollbars and borders, center the view, and disable drag."""
