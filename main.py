@@ -1347,10 +1347,16 @@ class ZoomableImageView(QGraphicsView):
             event.ignore()
             return
 
+        if  not (event.modifiers() & Qt.KeyboardModifier.ControlModifier):
+            super().wheelEvent(event)
+            return
+
         zoom_in_factor = 1.25
         zoom_out_factor = 1 / zoom_in_factor
         factor = zoom_in_factor if event.angleDelta().y() > 0 else zoom_out_factor
         self.apply_zoom(factor)
+
+        event.accept()
 
     def event(self, event):
         """
@@ -1633,7 +1639,7 @@ def set_light_palette(app):
     
  # === Main execution for the app ===
 if __name__ == "__main__":
-    
+
     if not sys.stdout:
         sys.stdout = open(os.devnull, "w")
     if not sys.stderr:
@@ -1656,4 +1662,7 @@ if __name__ == "__main__":
     """)
     main_window = ImageProcessingApp()
     main_window.show()
-    sys.exit(app.exec())
+    try:
+        sys.exit(app.exec())
+    except Exception as e:
+        print(e)
