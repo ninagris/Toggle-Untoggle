@@ -1,14 +1,13 @@
-
-
 import sys
+import os
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+
 import numpy as np
 import pandas as pd
-import os
 import torch
 import roifile
 import zipfile
 import cv2
-import os
 import shutil
 import platform
 
@@ -1646,7 +1645,7 @@ if __name__ == "__main__":
         sys.stderr = open(os.devnull, "w")
 
     app = QApplication(sys.argv)
-    app.setWindowIcon(QIcon(resource_path_2("icons/icon.ico")))
+    app.setWindowIcon(QIcon(resource_path("icons/icon.ico")))
     app.setStyle(QStyleFactory.create("Fusion"))
     # Optional: your global stylesheet
     set_light_palette(app)
