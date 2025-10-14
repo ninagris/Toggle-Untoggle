@@ -11,8 +11,7 @@
 ### Citation:
 If you use this software for your research, please cite:
 
-**Toggle-Untoggle: A cell segmentation tool with an interactive user verification interface**  
-*Nina Grishchenko, Margarita Byrsan, Matthew Craig Drummond-Stoyles, Michael F. Olson; Toggle-Untoggle: A cell segmentation tool with an interactive user verification interface. J Cell Sci 2025; jcs.264154. doi: https://doi.org/10.1242/jcs.264154
+Nina Grishchenko, Margarita Byrsan, Matthew Craig Drummond-Stoyles, Michael F. Olson; Toggle-Untoggle: A cell segmentation tool with an interactive user verification interface. J Cell Sci 2025; jcs.264154. doi: https://doi.org/10.1242/jcs.264154
 
 ## Installation Instructions
 
