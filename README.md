@@ -11,7 +11,7 @@
 ### Citation:
 If you use this software for your research, please cite:
 
-Nina Grishchenko, Margarita Byrsan, Matthew Craig Drummond-Stoyles, Michael F. Olson; Toggle-Untoggle – a cell segmentation tool with an interactive user verification interface. J Cell Sci 15 November 2025; 138 (22): jcs264154. doi: https://doi.org/10.1242/jcs.264154
+Nina Grishchenko, Margarita Byrsan, Matthew Craig Drummond-Stoyles, Michael F. Olson; Toggle-Untoggle – a cell segmentation tool with an interactive user verification interface. *J Cell Sci* 15 November 2025; 138 (22): jcs264154. doi: https://doi.org/10.1242/jcs.264154
 
 ## Installation Instructions
 
